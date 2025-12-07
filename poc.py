@@ -3,11 +3,13 @@ import time
 from openai import OpenAI
 import os
 
-ASSEMBLY_API_KEY = ""
-OPENAI_API_KEY = ""
-AUDIO_FILENAME = "test.mp3"
+# --- הגדרות (נא למלא את המפתחות שלכם כאן) ---
+
+# שם קובץ האודיו לבדיקה (ודאו שהוא קיים באותה תיקייה)
+AUDIO_FILENAME = "test.mp4"
 
 
+# --- פונקציה 1: העלאה ותמלול ב-AssemblyAI ---
 def transcribe_audio(filename):
     print(f"1. Uploading {filename} to AssemblyAI...")
     headers = {'authorization': ASSEMBLY_API_KEY}
