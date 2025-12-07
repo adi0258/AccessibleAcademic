@@ -4,8 +4,8 @@ from openai import OpenAI
 import os
 
 # --- הגדרות (נא למלא את המפתחות שלכם כאן) ---
-ASSEMBLY_API_KEY = "305cdba07e854862b61f268a322ce3d8"
-OPENAI_API_KEY = "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"
+ASSEMBLY_API_KEY = ""
+OPENAI_API_KEY = ""
 
 # שם קובץ האודיו לבדיקה (ודאו שהוא קיים באותה תיקייה)
 AUDIO_FILENAME = "test.mp3"
