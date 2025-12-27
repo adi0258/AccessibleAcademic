@@ -1,49 +1,65 @@
-from fastapi import FastAPI, BackgroundTasks, HTTPException
-from pydantic import BaseModel
-from typing import List
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends
+from sqlmodel import SQLModel, Field, create_engine, Session, select
+from typing import List, Optional
 import requests
 import time
 import os
+import json
 from openai import OpenAI
 from fastapi.middleware.cors import CORSMiddleware
+
+# --- 1. הגדרת בסיס הנתונים (SQLite) ---
+sqlite_file_name = "database.db"
+sqlite_url = f"sqlite:///./{sqlite_file_name}"
+engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+
+
+def get_session():
+    with Session(engine) as session:
+        yield session
+
+
+# --- 2. מודל הנתונים (הטבלה ב-DB) ---
+class Lecture(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    status: str
+    transcript: str = ""
+    words_json: str = "[]"  # שומרים את מערך המילים כטקסט JSON
+    summary_and_cards: str = ""
+
+
+def create_db_and_tables():
+    SQLModel.metadata.create_all(engine)
+
+
 app = FastAPI()
 
-# הגדרת CORS - מאפשר ל-React לגשת לשרת
+
+# הרצת יצירת הטבלאות כשהשרת עולה
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # בשלב הפיתוח מאפשרים לכולם, בהמשך נגביל לפורט של React
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- הגדרות ומפתחות ---
+# --- 3. מפתחות API ---
 ASSEMBLY_API_KEY = ""
 OPENAI_API_KEY = ""
 
-# בסיס נתונים זמני (In-Memory). ב-C זה היה מערך של structs.
-# שימו לב: אם מכבים את השרת, המידע נמחק.
-db_mock = []
-
-
-# --- מודלים של נתונים (Pydantic) ---
-# זהו המקביל ל-struct ב-C.
-# היתרון ב-FastAPI: הוא משתמש בזה כדי לבצע וולידציה אוטומטית לקלט/פלט.
-class LectureResult(BaseModel):
-    id: int
-    title: str
-    status: str
-    transcript: str = ""
-    summary_and_cards: str = ""
-
-
-# --- פונקציות עזר (Logic) ---
+# --- 4. פונקציות הליבה (Logic) ---
 
 def transcribe_audio(filename):
-    """שולחת אודיו לתמלול וממתינה לתוצאה (Polling)"""
+    """שלב א': תמלול האודיו ב-AssemblyAI"""
     headers = {'authorization': ASSEMBLY_API_KEY}
 
-    # העלאת הקובץ לשרת של AssemblyAI (כפי שהסברנו עם ה-Generator)
     def read_file(filename, chunk_size=5242880):
         with open(filename, 'rb') as _file:
             while True:
@@ -51,120 +67,99 @@ def transcribe_audio(filename):
                 if not data: break
                 yield data
 
+    # העלאה
     upload_response = requests.post('https://api.assemblyai.com/v2/upload', headers=headers, data=read_file(filename))
     audio_url = upload_response.json()['upload_url']
 
-    # בקשת התמלול
+    # בקשת תמלול
     json_data = {"audio_url": audio_url, "language_code": "he"}
     response = requests.post("https://api.assemblyai.com/v2/transcript", json=json_data, headers=headers)
     transcript_id = response.json()['id']
 
-    # לולאת המתנה (כמו ב-POC המקורי)
+    # המתנה לתוצאה
     while True:
         polling_response = requests.get(f"https://api.assemblyai.com/v2/transcript/{transcript_id}", headers=headers)
         res_json = polling_response.json()
-        status = res_json['status']
-
-        if status == 'completed':
-            return res_json['text']
-        elif status == 'error':
-            raise Exception(f"Transcription failed: {res_json.get('error')}")
-
-        time.sleep(3)  # מונע הצפה של ה-API בבקשות
+        if res_json['status'] == 'completed':
+            return {"text": res_json['text'], "words": res_json['words']}
+        elif res_json['status'] == 'error':
+            raise Exception("Transcription failed")
+        time.sleep(3)
 
 
+# ************************************************************
+# כאן היא נמצאת! הפונקציה שמייצרת את חומרי הלמידה
+# ************************************************************
 def generate_study_material(text):
-    print("\n4. Sending transcript to GPT-4o for analysis...")
+    """שלב ב': יצירת סיכום וכרטיסיות ב-OpenAI"""
     client = OpenAI(api_key=OPENAI_API_KEY)
 
     prompt = f"""
-    You are an expert tutor for university students.
-    Analyze the following lecture transcript (in Hebrew):
-
+    אתה עוזר אקדמי מומחה. נתח את תמלול ההרצאה הבא בעברית:
     "{text}"
-
-    Please provide output in Hebrew:
-    1. A concise summary (bullet points).
-    2. 3 Flashcards (Question and Answer) based on key concepts.
-
-    Format the output clearly.
+    ספק את התוצרים הבאים בעברית:
+    1. סיכום תמציתי בנקודות (Bullet points).
+    2. 3 כרטיסיות זיכרון (שאלה ותשובה) על המושגים המרכזיים.
+    שמור על מבנה ברור וקריא.
     """
 
     response = client.chat.completions.create(
         model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You are a helpful academic assistant."},
-            {"role": "user", "content": prompt}
-        ]
+        messages=[{"role": "system", "content": "You are a helpful academic assistant."},
+                  {"role": "user", "content": prompt}]
     )
-
     return response.choices[0].message.content
 
 
-# --- תהליך הרקע (The Pipeline) ---
+# --- 5. פס הייצור (The Pipeline) ---
 
 def run_full_pipeline(lecture_id: int, audio_filename: str):
-    """
-    הפונקציה הזו מריצה את כל תהליך ה-AI.
-    היא עובדת ברקע כדי שהמשתמש לא יצטרך לחכות דקות ארוכות לתגובת ה-HTTP.
-    """
-    # חיפוש ההרצאה ב"בסיס הנתונים" שלנו
-    lecture = next((item for item in db_mock if item["id"] == lecture_id), None)
-    if not lecture:
-        return
+    """מנהלת את התהליך ושומרת ב-Database בכל שלב"""
+    with Session(engine) as session:
+        lecture = session.get(Lecture, lecture_id)
+        if not lecture: return
 
-    try:
-        # שלב 1: תמלול (לוקח זמן)
-        text = transcribe_audio(audio_filename)
-        lecture["transcript"] = text
+        try:
+            # 1. הרצת תמלול
+            result = transcribe_audio(audio_filename)
+            lecture.transcript = result["text"]
+            lecture.words_json = json.dumps(result["words"])  # שמירת חותמות זמן
+            session.add(lecture)
+            session.commit()
 
-        # שלב 2: ניתוח GPT (לוקח זמן)
-        analysis = generate_study_material(text)
-        lecture["summary_and_cards"] = analysis
+            # 2. הרצת יצירת חומרי למידה (כאן הקריאה לפונקציה שחיפשתם!)
+            analysis = generate_study_material(result["text"])
+            lecture.summary_and_cards = analysis
 
-        # שלב 3: עדכון סטטוס לסיום
-        lecture["status"] = "completed"
+            # 3. סיום ועדכון סטטוס
+            lecture.status = "completed"
+            session.add(lecture)
+            session.commit()
+            print(f"✅ Lecture {lecture_id} finished processing.")
 
-    except Exception as e:
-        # אם משהו נכשל, נעדכן את הסטטוס כדי שהמשתמש ידע מה קרה
-        lecture["status"] = f"error: {str(e)}"
+        except Exception as e:
+            lecture.status = f"error: {str(e)}"
+            session.add(lecture)
+            session.commit()
 
 
-# --- נתיבי השרת (Endpoints) ---
+# --- 6. Endpoints ---
 
-@app.get("/lectures", response_model=List[LectureResult])
-def get_all_lectures():
-    """
-    נתיב GET: מחזיר את כל ההרצאות הקיימות.
-    המשתמש יכול לקרוא לזה שוב ושוב כדי לבדוק אם הסטטוס השתנה מ-processing ל-completed.
-    """
-    return db_mock
+@app.get("/lectures", response_model=List[Lecture])
+def get_all_lectures(session: Session = Depends(get_session)):
+    return session.exec(select(Lecture)).all()
 
 
 @app.post("/process")
-def process_lecture(title: str, filename: str, background_tasks: BackgroundTasks):
-    """
-    נתיב POST: מקבל פקודה להתחיל עיבוד של הרצאה חדשה.
-    1. בודק אם הקובץ קיים.
-    2. יוצר רשומה ב-db עם סטטוס 'processing'.
-    3. שולח את העבודה הכבדה לרקע ומחזיר תשובה מיידית למשתמש.
-    """
+def process_lecture(title: str, filename: str, background_tasks: BackgroundTasks,
+                    session: Session = Depends(get_session)):
     if not os.path.exists(filename):
-        raise HTTPException(status_code=404, detail="Audio file not found on server")
+        raise HTTPException(status_code=404, detail="File not found")
 
-    # יצירת ID חדש (פשוט רץ רציף)
-    lecture_id = len(db_mock) + 1
-    new_lecture = {
-        "id": lecture_id,
-        "title": title,
-        "status": "processing",
-        "transcript": "",
-        "summary_and_cards": ""
-    }
-    db_mock.append(new_lecture)
+    new_lecture = Lecture(title=title, status="processing")
+    session.add(new_lecture)
+    session.commit()
+    session.refresh(new_lecture)
 
-    # פקודה ל-FastAPI להריץ את ה-pipeline ברקע (Async-like behavior)
-    background_tasks.add_task(run_full_pipeline, lecture_id, filename)
-
-    # המשתמש מקבל תשובה מיידית עם ה-ID של הבקשה שלו
-    return {"message": "Processing started", "lecture_id": lecture_id}
+    background_tasks.add_task(run_full_pipeline, new_lecture.id, filename)
+    return {"message": "Started", "lecture_id": new_lecture.id}
