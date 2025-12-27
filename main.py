@@ -5,9 +5,17 @@ import requests
 import time
 import os
 from openai import OpenAI
-
-# יצירת מופע של האפליקציה. זהו "מרכז הבקרה" של השרת
+from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
+
+# הגדרת CORS - מאפשר ל-React לגשת לשרת
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # בשלב הפיתוח מאפשרים לכולם, בהמשך נגביל לפורט של React
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- הגדרות ומפתחות ---
 ASSEMBLY_API_KEY = ""
