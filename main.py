@@ -10,8 +10,8 @@ from openai import OpenAI
 app = FastAPI()
 
 # --- הגדרות ומפתחות ---
-ASSEMBLY_API_KEY = "הכנס_כאן"
-OPENAI_API_KEY = "הכנס_כאן"
+ASSEMBLY_API_KEY = ""
+OPENAI_API_KEY = ""
 
 # בסיס נתונים זמני (In-Memory). ב-C זה היה מערך של structs.
 # שימו לב: אם מכבים את השרת, המידע נמחק.
@@ -66,15 +66,30 @@ def transcribe_audio(filename):
 
 
 def generate_study_material(text):
-    """שולחת את התמלול ל-OpenAI לקבלת סיכום וכרטיסיות"""
+    print("\n4. Sending transcript to GPT-4o for analysis...")
     client = OpenAI(api_key=OPENAI_API_KEY)
-    prompt = f"Analyze the following lecture transcript in Hebrew:\n\"{text}\"\nProvide a summary and 3 flashcards."
+
+    prompt = f"""
+    You are an expert tutor for university students.
+    Analyze the following lecture transcript (in Hebrew):
+
+    "{text}"
+
+    Please provide output in Hebrew:
+    1. A concise summary (bullet points).
+    2. 3 Flashcards (Question and Answer) based on key concepts.
+
+    Format the output clearly.
+    """
 
     response = client.chat.completions.create(
         model="gpt-4o",
-        messages=[{"role": "system", "content": "You are a helpful academic assistant."},
-                  {"role": "user", "content": prompt}]
+        messages=[
+            {"role": "system", "content": "You are a helpful academic assistant."},
+            {"role": "user", "content": prompt}
+        ]
     )
+
     return response.choices[0].message.content
 
 
