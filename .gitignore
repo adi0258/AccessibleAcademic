@@ -1,0 +1,38 @@
+# Environment variables
+.env
+
+# Database
+database.db
+*.db
+
+# Recordings directory
+/recordings
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PDF exports
+export_*.pdf
+
+# Font files (if you don't want to commit them)
+*.ttf
+*.otf

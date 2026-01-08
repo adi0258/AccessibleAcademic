@@ -1,0 +1,6 @@
+fpdf2>=2.8.5
+fastapi
+sqlmodel
+openai
+uvicorn[standard]
+python-dotenv
