@@ -28,8 +28,9 @@ class Lecture(SQLModel, table=True):
     status: str
     transcript: str = ""
     words_json: str = "[]"
-    summary_and_cards: str = ""
-
+    # שדה חדש שיכיל את כל המידע המעובד (נושאים, סיכומים וכרטיסיות)
+    processed_content_json: str = "{}"
+    
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
 
@@ -79,10 +80,25 @@ def transcribe_audio(filename):
 
 def generate_study_material(text):
     client = OpenAI(api_key=OPENAI_API_KEY)
+    
+    prompt = f"""
+    נתח את תמלול ההרצאה הבא בעברית והחזר תשובה בפורמט JSON בלבד.
+    על ה-JSON להכיל:
+    1. "topics": רשימה של הנושאים המרכזיים שעלו (בנקודות).
+    2. "summaries": סיכום מפורט לכל נושא מרכזי שצוין.
+    3. "flashcards": רשימה של 3 כרטיסיות זיכרון (שאלה ותשובה).
+
+    התמלול:
+    {text}
+    """
+
     response = client.chat.completions.create(
         model="gpt-4o",
-        messages=[{"role": "system", "content": "You are a helpful academic assistant."},
-                  {"role": "user", "content": f"סכם את ההרצאה הבאה בעברית וצור 3 כרטיסיות זיכרון:\n{text}"}]
+        messages=[
+            {"role": "system", "content": "You are an academic assistant that outputs only valid JSON."},
+            {"role": "user", "content": prompt}
+        ],
+        response_format={ "type": "json_object" } # מבטיח שנקבל JSON תקין
     )
     return response.choices[0].message.content
 
@@ -97,7 +113,7 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
             session.add(lecture)
             session.commit()
 
-            lecture.summary_and_cards = generate_study_material(result["text"])
+            lecture.processed_content_json = generate_study_material(result["text"])
             lecture.status = "completed"
         except Exception as e:
             lecture.status = f"error: {str(e)}"
@@ -138,28 +154,44 @@ def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session))
     lecture = session.get(Lecture, lecture_id)
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
-    
 
+    data = json.loads(lecture.processed_content_json)
     pdf = FPDF()
     pdf.add_page()
     
-    # טעינת הגופן שהורדתם
     font_path = "Heebo-VariableFont_wght.ttf"
     if os.path.exists(font_path):
         pdf.add_font('Heebo', '', font_path, uni=True)
         pdf.set_font('Heebo', '', 14)
-    else:
-        pdf.set_font("Arial", size=12) # גיבוי אם הקובץ חסר
+    
+    # פונקציית עזר להוספת טקסט RTL
+    def add_rtl_text(text, size=12, is_title=False):
+        if is_title: pdf.set_font('Heebo', '', size + 4)
+        else: pdf.set_font('Heebo', '', size)
+        pdf.multi_cell(0, 10, txt=get_display(text), align='R')
+        pdf.ln(5)
 
-    # טיפול בכיווניות הטקסט (הופך את העברית כדי שלא תוצג הפוך)
-    title_rtl = get_display(f"כותרת: {lecture.title}")
-    content_rtl = get_display(lecture.summary_and_cards)
-    
-    pdf.write(10, title_rtl)
-    pdf.ln(20) # ירידת שורה
-    pdf.multi_cell(0, 10, txt=content_rtl, align='R') # יישור לימין
-    
+    add_rtl_text(f"סיכום הרצאה: {lecture.title}", size=18, is_title=True)
+
+    # 1. נושאים מרכזיים
+    add_rtl_text("נושאים מרכזיים:", is_title=True)
+    for topic in data.get("topics", []):
+        add_rtl_text(f"• {topic}")
+
+    # 2. סיכומים
+    add_rtl_text("סיכום מורחב:", is_title=True)
+    for summary in data.get("summaries", []):
+        add_rtl_text(summary)
+
+    # 3. כרטיסיות זיכרון
+    add_rtl_text("כרטיסיות זיכרון:", is_title=True)
+    for card in data.get("flashcards", []):
+        q = card.get('question', card.get('שאלה'))
+        a = card.get('answer', card.get('תשובה'))
+        add_rtl_text(f"שאלה: {q}")
+        add_rtl_text(f"תשובה: {a}")
+        pdf.ln(5)
+
     export_path = f"export_{lecture_id}.pdf"
     pdf.output(export_path)
-    
     return FileResponse(export_path, filename=f"summary_{lecture_id}.pdf")
