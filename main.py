@@ -163,11 +163,10 @@ def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session))
         data = {"topics": [], "summaries": [], "flashcards": []}
 
     pdf = FPDF()
-    # Explicit margins help prevent right-aligned RTL text from being clipped.
-    pdf.set_margins(18, 18, 18)
+    # Give RTL text generous breathing room near page edge.
+    pdf.set_margins(25, 18, 25)
     pdf.set_auto_page_break(auto=True, margin=18)
     pdf.add_page()
-    usable_width = pdf.w - pdf.l_margin - pdf.r_margin
 
     font_name = "Arial"
     font_path = "Heebo-VariableFont_wght.ttf"
@@ -179,9 +178,11 @@ def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session))
             print(f"Font loading failed: {e}")
 
     def add_rtl_section(title, content_list):
-        pdf.set_x(pdf.l_margin)
+        # Use width=0 so FPDF always renders up to the right margin.
+        # Also reset X before each multi_cell; multi_cell mutates cursor position.
         pdf.set_font(font_name, '', 16)
-        pdf.multi_cell(usable_width, 10, txt=get_display(title), align='R')
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(0, 10, txt=get_display(title), align='R')
         pdf.set_font(font_name, '', 12)
         for item in content_list:
             if isinstance(item, dict):
@@ -191,7 +192,8 @@ def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session))
             else:
                 text = f"• {item}"
             if text.strip():
-                pdf.multi_cell(usable_width, 10, txt=get_display(text), align='R')
+                pdf.set_x(pdf.l_margin)
+                pdf.multi_cell(0, 10, txt=get_display(text), align='R')
         pdf.ln(5)
 
     add_rtl_section(f"סיכום הרצאה: {lecture.title}", [])
