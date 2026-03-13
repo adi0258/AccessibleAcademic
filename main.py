@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, File, UploadFile
 from sqlmodel import SQLModel, Field, create_engine, Session, select
 from typing import List, Optional
 import requests
@@ -67,6 +67,29 @@ if not os.path.exists("recordings"):
     os.makedirs("recordings")
 
 app.mount("/static", StaticFiles(directory="recordings"), name="static")
+
+# --- UI: serve index page and file upload ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+@app.get("/", response_class=FileResponse)
+def serve_ui():
+    """Serve the lecture transcription UI."""
+    return FileResponse(os.path.join(BASE_DIR, "index.html"))
+
+@app.post("/upload")
+def upload_audio(file: UploadFile = File(...)):
+    """Accept an audio/video file and save it to recordings/. Returns the filename for use with /process."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename")
+    safe_name = os.path.basename(file.filename)
+    file_path = os.path.join("recordings", safe_name)
+    try:
+        contents = file.file.read()
+        with open(file_path, "wb") as f:
+            f.write(contents)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"filename": safe_name}
 
 @app.on_event("startup")
 def on_startup():

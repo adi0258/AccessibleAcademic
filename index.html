@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>מערכת תמלול הרצאות</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: {} }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Heebo', sans-serif; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+  <!-- Header -->
+  <div class="bg-white shadow-sm border-b border-gray-100">
+    <div class="max-w-6xl mx-auto px-6 py-6">
+      <div class="flex items-center gap-3">
+        <div class="p-3 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl">
+          <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            מערכת תמלול הרצאות
+          </h1>
+          <p class="text-gray-600 text-sm mt-1">המר הרצאות לחומרי למידה אוטומטית</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-6xl mx-auto px-6 py-8">
+    <!-- Upload Section -->
+    <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 mb-8">
+      <div class="flex items-center gap-3 mb-6">
+        <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+        </svg>
+        <h2 class="text-2xl font-bold text-gray-800">העלאת הרצאה חדשה</h2>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">כותרת ההרצאה</label>
+          <input
+            type="text"
+            id="lecture-title"
+            placeholder="לדוגמה: מבוא למדעי המחשב - שיעור 3"
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">קובץ אודיו</label>
+          <div class="relative">
+            <input type="file" id="file-upload" accept="audio/*,video/*" class="hidden" />
+            <label
+              for="file-upload"
+              class="flex items-center justify-center gap-3 w-full px-4 py-8 border-2 border-dashed border-gray-300 rounded-lg hover:border-indigo-500 transition cursor-pointer bg-gray-50 hover:bg-indigo-50"
+            >
+              <svg class="w-8 h-8 text-gray-400" id="file-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 6l12-3" />
+              </svg>
+              <div class="text-center">
+                <p class="text-gray-600 font-medium" id="file-label">לחץ לבחירת קובץ</p>
+                <p class="text-sm text-gray-400 mt-1">MP3, WAV, M4A, MP4</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          id="upload-btn"
+          disabled
+          class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-lg font-semibold hover:from-indigo-700 hover:to-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          <span id="btn-text">
+            <svg class="w-5 h-5 inline-block ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            התחל עיבוד
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Lectures List -->
+    <div class="space-y-4">
+      <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+        <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+        ההרצאות שלי
+      </h2>
+
+      <div id="lectures-container">
+        <div id="lectures-empty" class="bg-white rounded-2xl shadow-lg border border-gray-100 p-12 text-center hidden">
+          <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
+          </svg>
+          <p class="text-gray-500 text-lg">עדיין אין הרצאות. העלה את ההרצאה הראשונה שלך!</p>
+        </div>
+        <div id="lectures-list" class="space-y-4"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '';
+
+    function getStatusIcon(status) {
+      if (status === 'completed') {
+        return '<svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
+      }
+      if (status === 'processing' || (status && status.startsWith('error') === false && status !== 'completed')) {
+        return '<svg class="w-5 h-5 text-blue-500 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>';
+      }
+      if (status && status.startsWith('error')) {
+        return '<svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
+      }
+      return '<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
+    }
+
+    function getStatusText(status) {
+      if (status === 'completed') return 'הושלם';
+      if (status === 'processing') return 'בעיבוד...';
+      if (status && status.startsWith('error')) return 'שגיאה';
+      if (status) return status;
+      return 'ממתין';
+    }
+
+    function formatStudyMaterial(processedContentJson) {
+      if (!processedContentJson) return '';
+      try {
+        const data = typeof processedContentJson === 'string' ? JSON.parse(processedContentJson) : processedContentJson;
+        const parts = [];
+        if (data.topics && data.topics.length) {
+          parts.push('**נושאים מרכזיים:**\n• ' + data.topics.join('\n• '));
+        }
+        if (data.summaries && data.summaries.length) {
+          parts.push('**סיכום:**\n' + data.summaries.map(s => `${s.topic_name || 'נושא'}:\n${s.content || ''}`).join('\n\n'));
+        }
+        if (data.flashcards && data.flashcards.length) {
+          parts.push('**כרטיסיות:**\n' + data.flashcards.map((f, i) => `ש: ${f.question}\nת: ${f.answer}`).join('\n\n'));
+        }
+        return parts.join('\n\n');
+      } catch (_) {
+        return processedContentJson;
+      }
+    }
+
+    function renderLectures(lectures) {
+      const listEl = document.getElementById('lectures-list');
+      const emptyEl = document.getElementById('lectures-empty');
+      listEl.innerHTML = '';
+      if (!lectures.length) {
+        emptyEl.classList.remove('hidden');
+        return;
+      }
+      emptyEl.classList.add('hidden');
+      lectures.forEach((lecture) => {
+        const expanded = listEl.getAttribute('data-expanded') === String(lecture.id);
+        const isCompleted = lecture.status === 'completed';
+        const summaryText = formatStudyMaterial(lecture.processed_content_json);
+        const transcriptPreview = (lecture.transcript || '').substring(0, 200);
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden hover:shadow-lg transition lecture-card';
+        card.dataset.lectureId = lecture.id;
+        card.innerHTML = `
+          <div class="p-6 cursor-pointer lecture-toggle">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-4 flex-1">
+                <span class="status-icon">${getStatusIcon(lecture.status)}</span>
+                <div>
+                  <h3 class="text-lg font-semibold text-gray-800">${escapeHtml(lecture.title)}</h3>
+                  <p class="text-sm text-gray-500 mt-1">${getStatusText(lecture.status)}</p>
+                </div>
+              </div>
+              <div class="text-gray-400 expand-arrow">${expanded ? '▲' : '▼'}</div>
+            </div>
+          </div>
+          ${isCompleted ? `
+          <div class="lecture-details border-t border-gray-100 p-6 bg-gray-50 space-y-4 ${expanded ? '' : 'hidden'}">
+            <div>
+              <h4 class="font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                תמלול
+              </h4>
+              <p class="text-gray-600 text-sm bg-white p-4 rounded-lg border border-gray-200">${escapeHtml(transcriptPreview)}${(lecture.transcript || '').length > 200 ? '...' : ''}</p>
+            </div>
+            <div>
+              <h4 class="font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                חומרי למידה
+              </h4>
+              <div class="text-gray-600 text-sm bg-white p-4 rounded-lg border border-gray-200 whitespace-pre-line">${escapeHtml(summaryText)}</div>
+            </div>
+            <a href="${API_BASE}/lectures/${lecture.id}/export" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">ייצוא PDF</a>
+          </div>
+          ` : ''}
+        `;
+        listEl.appendChild(card);
+      });
+
+      listEl.querySelectorAll('.lecture-toggle').forEach((el) => {
+        el.addEventListener('click', () => {
+          const card = el.closest('.lecture-card');
+          const id = card.dataset.lectureId;
+          const details = card.querySelector('.lecture-details');
+          const arrow = card.querySelector('.expand-arrow');
+          if (!details) return;
+          const isHidden = details.classList.contains('hidden');
+          listEl.setAttribute('data-expanded', isHidden ? id : '');
+          details.classList.toggle('hidden', !isHidden);
+          arrow.textContent = isHidden ? '▲' : '▼';
+        });
+      });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function loadLectures() {
+      try {
+        const res = await fetch(API_BASE + '/lectures');
+        const lectures = await res.json();
+        renderLectures(lectures);
+      } catch (e) {
+        console.error('Failed to load lectures', e);
+        document.getElementById('lectures-list').innerHTML = '<p class="text-red-500 p-4">שגיאה בטעינת ההרצאות</p>';
+      }
+    }
+
+    document.getElementById('file-upload').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      document.getElementById('file-label').textContent = file ? file.name : 'לחץ לבחירת קובץ';
+      document.getElementById('upload-btn').disabled = !file || !document.getElementById('lecture-title').value.trim();
+    });
+
+    document.getElementById('lecture-title').addEventListener('input', () => {
+      const title = document.getElementById('lecture-title').value.trim();
+      const file = document.getElementById('file-upload').files[0];
+      document.getElementById('upload-btn').disabled = !file || !title;
+    });
+
+    document.getElementById('upload-btn').addEventListener('click', async () => {
+      const titleInput = document.getElementById('lecture-title');
+      const fileInput = document.getElementById('file-upload');
+      const title = titleInput.value.trim();
+      const file = fileInput.files[0];
+      if (!title || !file) return;
+
+      const btn = document.getElementById('upload-btn');
+      const btnText = document.getElementById('btn-text');
+      btn.disabled = true;
+      btnText.innerHTML = '<svg class="w-5 h-5 animate-spin inline-block ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> מעלה...';
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const uploadRes = await fetch(API_BASE + '/upload', {
+          method: 'POST',
+          body: formData
+        });
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json().catch(() => ({}));
+          throw new Error(err.detail || 'העלאה נכשלה');
+        }
+        const { filename } = await uploadRes.json();
+
+        const processRes = await fetch(API_BASE + '/process?title=' + encodeURIComponent(title) + '&filename=' + encodeURIComponent(filename), {
+          method: 'POST'
+        });
+        if (!processRes.ok) {
+          const err = await processRes.json().catch(() => ({}));
+          throw new Error(err.detail || 'התחלת עיבוד נכשלה');
+        }
+
+        titleInput.value = '';
+        fileInput.value = '';
+        document.getElementById('file-label').textContent = 'לחץ לבחירת קובץ';
+        await loadLectures();
+      } catch (e) {
+        alert(e.message || 'אירעה שגיאה');
+      } finally {
+        btn.disabled = false;
+        btnText.innerHTML = '<svg class="w-5 h-5 inline-block ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg> התחל עיבוד';
+      }
+    });
+
+    loadLectures();
+    setInterval(loadLectures, 5000);
+  </script>
+</body>
+</html>
