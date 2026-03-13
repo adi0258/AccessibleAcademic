@@ -200,16 +200,32 @@ def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session))
     if data.get("summaries"):
         add_section_header("סיכום מורחב")
         for item in data["summaries"]:
+            # תמיכה גם במקרה שהפריטים הם מחרוזות בלבד ולא אובייקטים
+            if isinstance(item, dict):
+                topic_name = item.get('topic_name', 'נושא')
+                content = item.get('content', '')
+            elif isinstance(item, str):
+                # ננסה לפצל לפי הנקודתיים – "נושא: תוכן"
+                if ":" in item:
+                    raw_topic, raw_content = item.split(":", 1)
+                    topic_name = raw_topic.strip() or 'נושא'
+                    content = raw_content.strip()
+                else:
+                    topic_name = 'נושא'
+                    content = item
+            else:
+                # פורמט לא צפוי – נדלג
+                continue
+
             # שם הנושא
             pdf.set_font(font_name, '', 14)
-            topic_name = item.get('topic_name', 'נושא')
             pdf.set_x(pdf.l_margin)
             pdf.multi_cell(usable_width, 10, txt=get_display(f"{topic_name}:"), align='R')
             
             # תוכן הסיכום
             pdf.set_font(font_name, '', 12)
             pdf.set_x(pdf.l_margin)
-            pdf.multi_cell(usable_width, 8, txt=get_display(item.get('content', '')), align='R')
+            pdf.multi_cell(usable_width, 8, txt=get_display(content), align='R')
             
             # קו הפרדה עדין בין נושאים
             pdf.set_draw_color(200, 200, 200)
