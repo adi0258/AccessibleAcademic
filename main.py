@@ -84,13 +84,16 @@ def transcribe_audio(filename):
 def generate_study_material(text):
     client = OpenAI(api_key=OPENAI_API_KEY)
     
-    # הפרומפט המשודרג: דורש JSON עם הפרדה בין שם הנושא לתוכן שלו
     prompt = f"""
     נתח את תמלול ההרצאה האקדמית הבא בעברית והחזר JSON בלבד.
+    הסיכומים חייבים להיות מקצועיים, אקדמיים ומפורטים מאוד.
+    
     על ה-JSON להכיל:
-    1. "topics": רשימה של כותרות הנושאים המרכזיים בקצרה (בעברית).
-    2. "summaries": רשימה של אובייקטים. כל אובייקט מכיל "topic_name" ו-"content" (סיכום בעברית מפורט ומעמיק של אותו נושא על בסיס ההרצאה).
-    3. "flashcards": רשימה של אובייקטים עם "question" ו-"answer" (שאלה ותשובה בעברית).
+    1. "topics": רשימה של כותרות הנושאים המרכזיים בקצרה.
+    2. "summaries": רשימה של אובייקטים. כל אובייקט מכיל:
+       - "topic_name": שם הנושא.
+       - "content": סיכום מעמיק ומפורט (לפחות 4-6 משפטים) על הנושא הספציפי מתוך ההרצאה.
+    3. "flashcards": רשימה של 5 אובייקטים עם "question" ו-"answer".
 
     התמלול:
     {text}
@@ -99,7 +102,7 @@ def generate_study_material(text):
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": "You are an expert academic assistant. Your summaries are detailed, structured, and strictly based on the provided transcript. All text should be in Hebrew."},
+            {"role": "system", "content": "You are an expert academic professor. You write detailed, long, and structured summaries in Hebrew. You ensure each summary is comprehensive."},
             {"role": "user", "content": prompt}
         ],
         response_format={ "type": "json_object" }
@@ -146,7 +149,7 @@ def process_lecture(title: str, filename: str, background_tasks: BackgroundTasks
 def get_all_lectures(session: Session = Depends(get_session)):
     return session.exec(select(Lecture)).all()
 
-# --- 7. ייצוא ל-PDF (החלק המעוצב מחדש) ---
+# --- 7. ייצוא ל-PDF (תיקון חיתוך המילים) ---
 @app.get("/lectures/{lecture_id}/export")
 def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session)):
     lecture = session.get(Lecture, lecture_id)
@@ -155,7 +158,7 @@ def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session))
 
     try:
         data = json.loads(lecture.processed_content_json)
-    except json.JSONDecodeError:
+    except:
         data = {"topics": [], "summaries": [], "flashcards": []}
 
     pdf = FPDF()
@@ -164,90 +167,71 @@ def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session))
     usable_width = pdf.w - pdf.l_margin - pdf.r_margin
 
     font_name = "Arial"
-    font_path = "Heebo-VariableFont_wght.ttf" # וודאו שהקובץ קיים בתיקייה
+    font_path = "Heebo-VariableFont_wght.ttf" 
     if os.path.exists(font_path):
         try:
             pdf.add_font('Heebo', '', font_path, uni=True)
             font_name = 'Heebo'
         except: pass
 
-    # פונקציית עזר לכותרות סקציה
+    # --- פונקציית עזר לפתרון בעיית ה-RTL והחיתוך ---
+    def write_rtl_multiline(text, font_size, is_bold=False):
+        pdf.set_font(font_name, '', font_size)
+        # חותכים את הטקסט לשורות לפי רוחב העמוד לפני ההפיכה (get_display)
+        lines = pdf.multi_cell(usable_width, 8, txt=text, align='R', split_only=True)
+        for line in lines:
+            pdf.set_x(pdf.l_margin)
+            # הופכים כל שורה בנפרד ומדפיסים
+            pdf.multi_cell(usable_width, 8, txt=get_display(line), align='R')
+
     def add_section_header(text):
+        pdf.ln(5)
         pdf.set_font(font_name, '', 18)
-        pdf.set_text_color(0, 51, 102) # כחול כהה אקדמי
+        pdf.set_text_color(0, 51, 102)
         pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(usable_width, 12, txt=get_display(text), align='R')
+        pdf.multi_cell(usable_width, 10, txt=get_display(text), align='R')
         pdf.set_draw_color(0, 51, 102)
         pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(5)
-        pdf.set_text_color(0, 0, 0) # חזרה לשחור
+        pdf.set_text_color(0, 0, 0)
 
-    # כותרת ההרצאה
-    pdf.set_font(font_name, '', 22)
-    pdf.multi_cell(usable_width, 15, txt=get_display(f"סיכום הרצאה: {lecture.title}"), align='R')
+    # 1. כותרת
+    write_rtl_multiline(f"סיכום הרצאה: {lecture.title}", 22)
     pdf.ln(10)
 
-    # 1. נושאים מרכזיים (נקודות)
+    # 2. נושאים
     if data.get("topics"):
         add_section_header("נושאים מרכזיים")
-        pdf.set_font(font_name, '', 13)
         for topic in data["topics"]:
-            pdf.set_x(pdf.l_margin)
-            pdf.multi_cell(usable_width, 9, txt=get_display(f"• {topic}"), align='R')
-        pdf.ln(10)
+            write_rtl_multiline(f"• {topic}", 13)
+        pdf.ln(5)
 
-    # 2. סיכום מורחב (עם קווי הפרדה ושם נושא מודגש)
+    # 3. סיכום מורחב (עם הפרדות)
     if data.get("summaries"):
         add_section_header("סיכום מורחב")
         for item in data["summaries"]:
-            # תמיכה גם במקרה שהפריטים הם מחרוזות בלבד ולא אובייקטים
-            if isinstance(item, dict):
-                topic_name = item.get('topic_name', 'נושא')
-                content = item.get('content', '')
-            elif isinstance(item, str):
-                # ננסה לפצל לפי הנקודתיים – "נושא: תוכן"
-                if ":" in item:
-                    raw_topic, raw_content = item.split(":", 1)
-                    topic_name = raw_topic.strip() or 'נושא'
-                    content = raw_content.strip()
-                else:
-                    topic_name = 'נושא'
-                    content = item
-            else:
-                # פורמט לא צפוי – נדלג
-                continue
-
-            # שם הנושא
-            pdf.set_font(font_name, '', 14)
-            pdf.set_x(pdf.l_margin)
-            pdf.multi_cell(usable_width, 10, txt=get_display(f"{topic_name}:"), align='R')
+            topic_title = item.get('topic_name', 'נושא')
+            content = item.get('content', '')
             
-            # תוכן הסיכום
-            pdf.set_font(font_name, '', 12)
-            pdf.set_x(pdf.l_margin)
-            pdf.multi_cell(usable_width, 8, txt=get_display(content), align='R')
+            # הדפסת שם הנושא מודגש
+            write_rtl_multiline(f"{topic_title}:", 14)
+            # הדפסת התוכן המפורט
+            write_rtl_multiline(content, 12)
             
-            # קו הפרדה עדין בין נושאים
-            pdf.set_draw_color(200, 200, 200)
-            pdf.ln(3)
-            pdf.line(pdf.l_margin + 50, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
-            pdf.ln(5)
-        pdf.ln(5)
+            # קו הפרדה
+            pdf.ln(2)
+            pdf.set_draw_color(220, 220, 220)
+            pdf.line(pdf.l_margin + 20, pdf.get_y(), pdf.w - pdf.r_margin - 20, pdf.get_y())
+            pdf.ln(4)
 
-    # 3. כרטיסיות זיכרון (מספור וירידת שורה)
+    # 4. כרטיסיות
     if data.get("flashcards"):
+        pdf.add_page() # דף חדש לכרטיסיות
         add_section_header("כרטיסיות זיכרון")
-        pdf.set_font(font_name, '', 12)
         for i, card in enumerate(data["flashcards"], 1):
-            pdf.set_x(pdf.l_margin)
-            # שאלה
-            question_text = f"{i}. שאלה: {card.get('question')}"
-            pdf.multi_cell(usable_width, 8, txt=get_display(question_text), align='R')
-            # תשובה (בירידת שורה)
-            pdf.set_x(pdf.l_margin)
-            answer_text = f"תשובה: {card.get('answer')}"
-            pdf.multi_cell(usable_width, 8, txt=get_display(answer_text), align='R')
-            pdf.ln(5)
+            write_rtl_multiline(f"{i}. שאלה: {card.get('question')}", 13)
+            write_rtl_multiline(f"תשובה: {card.get('answer')}", 12)
+            pdf.ln(6)
 
     export_path = f"export_{lecture_id}.pdf"
     pdf.output(export_path)
