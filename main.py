@@ -76,6 +76,12 @@ def serve_ui():
     """Serve the lecture transcription UI."""
     return FileResponse(os.path.join(BASE_DIR, "index.html"))
 
+
+@app.get("/watch/{lecture_id}", response_class=FileResponse)
+def watch_lecture(lecture_id: int):
+    """Serve the watch-with-captions page for a lecture."""
+    return FileResponse(os.path.join(BASE_DIR, "watch.html"))
+
 @app.post("/upload")
 def upload_audio(file: UploadFile = File(...)):
     """Accept an audio/video file and save it to recordings/. Returns the filename for use with /process."""
