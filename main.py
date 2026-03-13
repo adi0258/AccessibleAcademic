@@ -32,9 +32,26 @@ class Lecture(SQLModel, table=True):
     transcript: str = ""
     words_json: str = "[]"
     processed_content_json: str = "{}"
+    # Progress tracking (AssemblyAI stage + derived percentage)
+    assemblyai_transcript_id: Optional[str] = None
+    processing_stage: Optional[str] = None  # uploading, transcribing, generating_study_material, completed
+    progress_percent: Optional[int] = None  # 0-100
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+    # Add progress columns if they don't exist (for existing DBs)
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        r = conn.execute(text("PRAGMA table_info(lecture)"))
+        cols = {row[1] for row in r}
+        for col, spec in [
+            ("assemblyai_transcript_id", "TEXT"),
+            ("processing_stage", "TEXT"),
+            ("progress_percent", "INTEGER"),
+        ]:
+            if col not in cols:
+                conn.execute(text(f"ALTER TABLE lecture ADD COLUMN {col} {spec}"))
+        conn.commit()
 
 app = FastAPI(title="Accessible Academic Backend")
 
@@ -60,11 +77,30 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # --- 4. לוגיקת AI ---
 
-def transcribe_audio(filename):
-    headers = {'authorization': ASSEMBLY_API_KEY}
+def _assembly_headers():
+    return {'authorization': ASSEMBLY_API_KEY}
+
+def _update_lecture_progress(lecture_id: int, processing_stage: str, progress_percent: int, assemblyai_transcript_id: Optional[str] = None):
+    """Persist progress so the API can return it to the UI."""
+    with Session(engine) as session:
+        lecture = session.get(Lecture, lecture_id)
+        if lecture:
+            lecture.processing_stage = processing_stage
+            lecture.progress_percent = progress_percent
+            if assemblyai_transcript_id is not None:
+                lecture.assemblyai_transcript_id = assemblyai_transcript_id
+            session.add(lecture)
+            session.commit()
+
+def transcribe_audio(filename, lecture_id: Optional[int] = None):
+    """Upload audio to AssemblyAI, submit transcript job, poll until done. Optionally report progress to DB."""
+    headers = _assembly_headers()
     def read_file(fn):
         with open(fn, 'rb') as _f:
             while chunk := _f.read(5242880): yield chunk
+
+    if lecture_id is not None:
+        _update_lecture_progress(lecture_id, "uploading", 5)
 
     up_res = requests.post('https://api.assemblyai.com/v2/upload', headers=headers, data=read_file(filename))
     audio_url = up_res.json()['upload_url']
@@ -73,12 +109,21 @@ def transcribe_audio(filename):
                            json={"audio_url": audio_url, "language_code": "he"}, headers=headers)
     tx_id = tx_res.json()['id']
 
+    if lecture_id is not None:
+        _update_lecture_progress(lecture_id, "transcribing", 15, assemblyai_transcript_id=tx_id)
+
     while True:
         res = requests.get(f"https://api.assemblyai.com/v2/transcript/{tx_id}", headers=headers).json()
-        if res['status'] == 'completed':
-            return {"text": res['text'], "words": res['words']}
-        if res['status'] == 'error':
-            raise Exception("Transcription failed")
+        status = res.get('status', '')
+        if lecture_id is not None:
+            if status == 'queued':
+                _update_lecture_progress(lecture_id, "transcribing", 20)
+            elif status == 'processing':
+                _update_lecture_progress(lecture_id, "transcribing", 50)
+        if status == 'completed':
+            return {"text": res['text'], "words": res.get('words', [])}
+        if status == 'error':
+            raise Exception(res.get('error', 'Transcription failed'))
         time.sleep(3)
 
 def generate_study_material(text):
@@ -113,21 +158,38 @@ def generate_study_material(text):
 def run_full_pipeline(lecture_id: int, audio_filename: str):
     with Session(engine) as session:
         lecture = session.get(Lecture, lecture_id)
+        if not lecture:
+            return
         try:
-            result = transcribe_audio(audio_filename)
-            lecture.transcript = result["text"]
-            lecture.words_json = json.dumps(result["words"])
-            session.add(lecture)
-            session.commit()
+            result = transcribe_audio(audio_filename, lecture_id=lecture_id)
+            with Session(engine) as session2:
+                lec = session2.get(Lecture, lecture_id)
+                if lec:
+                    lec.transcript = result["text"]
+                    lec.words_json = json.dumps(result.get("words", []))
+                    session2.add(lec)
+                    session2.commit()
 
-            lecture.processed_content_json = generate_study_material(result["text"])
-            lecture.status = "completed"
+            _update_lecture_progress(lecture_id, "generating_study_material", 85)
+            processed = generate_study_material(result["text"])
+            with Session(engine) as session3:
+                lec = session3.get(Lecture, lecture_id)
+                if lec:
+                    lec.processed_content_json = processed
+                    lec.status = "completed"
+                    lec.processing_stage = "completed"
+                    lec.progress_percent = 100
+                    session3.add(lec)
+                    session3.commit()
         except Exception as e:
             print(f"Pipeline Error: {str(e)}")
-            lecture.status = f"error: {str(e)}"
-        finally:
-            session.add(lecture)
-            session.commit()
+            with Session(engine) as session_err:
+                lec = session_err.get(Lecture, lecture_id)
+                if lec:
+                    lec.status = f"error: {str(e)}"
+                    lec.processing_stage = "error"
+                    session_err.add(lec)
+                    session_err.commit()
 
 # --- 6. Endpoints ---
 
@@ -137,7 +199,13 @@ def process_lecture(title: str, filename: str, background_tasks: BackgroundTasks
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
 
-    new_lecture = Lecture(title=title, filename=filename, status="processing")
+    new_lecture = Lecture(
+        title=title,
+        filename=filename,
+        status="processing",
+        processing_stage="pending",
+        progress_percent=0,
+    )
     session.add(new_lecture)
     session.commit()
     session.refresh(new_lecture)
@@ -148,6 +216,13 @@ def process_lecture(title: str, filename: str, background_tasks: BackgroundTasks
 @app.get("/lectures", response_model=List[Lecture])
 def get_all_lectures(session: Session = Depends(get_session)):
     return session.exec(select(Lecture)).all()
+
+@app.get("/lectures/{lecture_id}", response_model=Lecture)
+def get_lecture(lecture_id: int, session: Session = Depends(get_session)):
+    lecture = session.get(Lecture, lecture_id)
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+    return lecture
 
 # --- 7. ייצוא ל-PDF (תיקון חיתוך המילים) ---
 @app.get("/lectures/{lecture_id}/export")
