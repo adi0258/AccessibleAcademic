@@ -23,7 +23,7 @@ def get_session():
     with Session(engine) as session:
         yield session
 
-# --- 2. מודל הנתונים (מעודכן עם השדה החדש) ---
+# --- 2. מודל הנתונים ---
 class Lecture(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
@@ -31,7 +31,7 @@ class Lecture(SQLModel, table=True):
     status: str
     transcript: str = ""
     words_json: str = "[]"
-    processed_content_json: str = "{}" # כאן יישמרו 3 המשימות
+    processed_content_json: str = "{}"
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
@@ -66,16 +66,13 @@ def transcribe_audio(filename):
         with open(fn, 'rb') as _f:
             while chunk := _f.read(5242880): yield chunk
 
-    # העלאה
     up_res = requests.post('https://api.assemblyai.com/v2/upload', headers=headers, data=read_file(filename))
     audio_url = up_res.json()['upload_url']
 
-    # בקשת תמלול
     tx_res = requests.post("https://api.assemblyai.com/v2/transcript",
                            json={"audio_url": audio_url, "language_code": "he"}, headers=headers)
     tx_id = tx_res.json()['id']
 
-    # Polling
     while True:
         res = requests.get(f"https://api.assemblyai.com/v2/transcript/{tx_id}", headers=headers).json()
         if res['status'] == 'completed':
@@ -87,12 +84,12 @@ def transcribe_audio(filename):
 def generate_study_material(text):
     client = OpenAI(api_key=OPENAI_API_KEY)
     
-    # ה-Prompt המדויק ל-3 המשימות שלך בפורמט JSON
+    # הפרומפט המשודרג: דורש JSON עם הפרדה בין שם הנושא לתוכן שלו
     prompt = f"""
-    נתח את תמלול ההרצאה הבא בעברית והחזר תשובה בפורמט JSON בלבד.
-    ה-JSON חייב להכיל בדיוק את המפתחות הבאים:
-    1. "topics": רשימה (list) של הנושאים המרכזיים בנקודות.
-    2. "summaries": רשימה (list) של סיכומים קצרים לכל נושא.
+    נתח את תמלול ההרצאה האקדמית הבא בעברית והחזר JSON בלבד.
+    על ה-JSON להכיל:
+    1. "topics": רשימה של כותרות הנושאים המרכזיים בקצרה.
+    2. "summaries": רשימה של אובייקטים. כל אובייקט מכיל "topic_name" ו-"content" (סיכום מפורט ומעמיק של אותו נושא על בסיס ההרצאה).
     3. "flashcards": רשימה של אובייקטים עם "question" ו-"answer".
 
     התמלול:
@@ -102,7 +99,7 @@ def generate_study_material(text):
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": "You are an academic assistant that strictly outputs JSON in Hebrew."},
+            {"role": "system", "content": "You are an expert academic assistant. Your summaries are detailed, structured, and strictly based on the provided transcript."},
             {"role": "user", "content": prompt}
         ],
         response_format={ "type": "json_object" }
@@ -114,14 +111,12 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
     with Session(engine) as session:
         lecture = session.get(Lecture, lecture_id)
         try:
-            # שלב 1: תמלול
             result = transcribe_audio(audio_filename)
             lecture.transcript = result["text"]
             lecture.words_json = json.dumps(result["words"])
             session.add(lecture)
             session.commit()
 
-            # שלב 2: 3 המשימות (נושאים, סיכום, כרטיסיות)
             lecture.processed_content_json = generate_study_material(result["text"])
             lecture.status = "completed"
         except Exception as e:
@@ -151,6 +146,7 @@ def process_lecture(title: str, filename: str, background_tasks: BackgroundTasks
 def get_all_lectures(session: Session = Depends(get_session)):
     return session.exec(select(Lecture)).all()
 
+# --- 7. ייצוא ל-PDF (החלק המעוצב מחדש) ---
 @app.get("/lectures/{lecture_id}/export")
 def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session)):
     lecture = session.get(Lecture, lecture_id)
@@ -163,47 +159,79 @@ def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session))
         data = {"topics": [], "summaries": [], "flashcards": []}
 
     pdf = FPDF()
-    # Give RTL text generous breathing room near page edge.
-    pdf.set_margins(25, 18, 25)
-    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.set_margins(20, 20, 20)
     pdf.add_page()
+    usable_width = pdf.w - pdf.l_margin - pdf.r_margin
 
     font_name = "Arial"
-    font_path = "Heebo-VariableFont_wght.ttf"
+    font_path = "Heebo-VariableFont_wght.ttf" # וודאו שהקובץ קיים בתיקייה
     if os.path.exists(font_path):
         try:
             pdf.add_font('Heebo', '', font_path, uni=True)
             font_name = 'Heebo'
-        except Exception as e:
-            print(f"Font loading failed: {e}")
+        except: pass
 
-    def add_rtl_section(title, content_list):
-        # Use width=0 so FPDF always renders up to the right margin.
-        # Also reset X before each multi_cell; multi_cell mutates cursor position.
-        pdf.set_font(font_name, '', 16)
+    # פונקציית עזר לכותרות סקציה
+    def add_section_header(text):
+        pdf.set_font(font_name, '', 18)
+        pdf.set_text_color(0, 51, 102) # כחול כהה אקדמי
         pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(0, 10, txt=get_display(title), align='R')
-        pdf.set_font(font_name, '', 12)
-        for item in content_list:
-            if isinstance(item, dict):
-                q = item.get('question', '')
-                a = item.get('answer', '')
-                text = f"שאלה: {q} | תשובה: {a}"
-            else:
-                text = f"• {item}"
-            if text.strip():
-                pdf.set_x(pdf.l_margin)
-                pdf.multi_cell(0, 10, txt=get_display(text), align='R')
+        pdf.multi_cell(usable_width, 12, txt=get_display(text), align='R')
+        pdf.set_draw_color(0, 51, 102)
+        pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+        pdf.ln(5)
+        pdf.set_text_color(0, 0, 0) # חזרה לשחור
+
+    # כותרת ההרצאה
+    pdf.set_font(font_name, '', 22)
+    pdf.multi_cell(usable_width, 15, txt=get_display(f"סיכום הרצאה: {lecture.title}"), align='R')
+    pdf.ln(10)
+
+    # 1. נושאים מרכזיים (נקודות)
+    if data.get("topics"):
+        add_section_header("נושאים מרכזיים")
+        pdf.set_font(font_name, '', 13)
+        for topic in data["topics"]:
+            pdf.set_x(pdf.l_margin)
+            pdf.multi_cell(usable_width, 9, txt=get_display(f"• {topic}"), align='R')
+        pdf.ln(10)
+
+    # 2. סיכום מורחב (עם קווי הפרדה ושם נושא מודגש)
+    if data.get("summaries"):
+        add_section_header("סיכום מורחב")
+        for item in data["summaries"]:
+            # שם הנושא
+            pdf.set_font(font_name, '', 14)
+            topic_name = item.get('topic_name', 'נושא')
+            pdf.set_x(pdf.l_margin)
+            pdf.multi_cell(usable_width, 10, txt=get_display(f"{topic_name}:"), align='R')
+            
+            # תוכן הסיכום
+            pdf.set_font(font_name, '', 12)
+            pdf.set_x(pdf.l_margin)
+            pdf.multi_cell(usable_width, 8, txt=get_display(item.get('content', '')), align='R')
+            
+            # קו הפרדה עדין בין נושאים
+            pdf.set_draw_color(200, 200, 200)
+            pdf.ln(3)
+            pdf.line(pdf.l_margin + 50, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+            pdf.ln(5)
         pdf.ln(5)
 
-    add_rtl_section(f"סיכום הרצאה: {lecture.title}", [])
-
-    if data.get("topics"):
-        add_rtl_section("נושאים מרכזיים:", data["topics"])
-    if data.get("summaries"):
-        add_rtl_section("סיכום מורחב:", data["summaries"])
+    # 3. כרטיסיות זיכרון (מספור וירידת שורה)
     if data.get("flashcards"):
-        add_rtl_section("כרטיסיות זיכרון:", data["flashcards"])
+        add_section_header("כרטיסיות זיכרון")
+        pdf.set_font(font_name, '', 12)
+        for i, card in enumerate(data["flashcards"], 1):
+            pdf.set_x(pdf.l_margin)
+            # שאלה
+            question_text = f"{i}. שאלה: {card.get('question')}"
+            pdf.multi_cell(usable_width, 8, txt=get_display(question_text), align='R')
+            # תשובה (בירידת שורה)
+            pdf.set_x(pdf.l_margin)
+            answer_text = f"תשובה: {card.get('answer')}"
+            pdf.multi_cell(usable_width, 8, txt=get_display(answer_text), align='R')
+            pdf.ln(5)
 
     export_path = f"export_{lecture_id}.pdf"
     pdf.output(export_path)
