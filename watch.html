@@ -46,22 +46,37 @@
       ogg: 'audio/ogg'
     };
 
+    const MAX_WORDS_PER_SEGMENT = 15;
+    const SENTENCE_END = /[.?!。．？！]\s*$/;
+
     function buildSegments(words) {
       if (!words || !words.length) return [];
       const segments = [];
-      let seg = { start: words[0].start, end: words[0].end, text: words[0].text || '' };
-      const gapMs = 1200;
-      for (let i = 1; i < words.length; i++) {
+      let chunk = [];
+      for (let i = 0; i < words.length; i++) {
         const w = words[i];
-        if (w.start - seg.end <= gapMs) {
-          seg.end = w.end;
-          seg.text += ' ' + (w.text || '');
-        } else {
-          segments.push(seg);
-          seg = { start: w.start, end: w.end, text: w.text || '' };
+        const text = (w.text || '').trim();
+        chunk.push({ start: w.start, end: w.end, text: text });
+        const endOfSentence = text && SENTENCE_END.test(text);
+        const atMaxWords = chunk.length >= MAX_WORDS_PER_SEGMENT;
+        if (atMaxWords || endOfSentence) {
+          const seg = {
+            start: chunk[0].start,
+            end: chunk[chunk.length - 1].end,
+            text: chunk.map((c) => c.text).filter(Boolean).join(' ').trim()
+          };
+          if (seg.text) segments.push(seg);
+          chunk = [];
         }
       }
-      segments.push(seg);
+      if (chunk.length > 0) {
+        const seg = {
+          start: chunk[0].start,
+          end: chunk[chunk.length - 1].end,
+          text: chunk.map((c) => c.text).filter(Boolean).join(' ').trim()
+        };
+        if (seg.text) segments.push(seg);
+      }
       return segments;
     }
 
