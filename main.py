@@ -161,7 +161,7 @@ def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session))
     pdf = FPDF()
     pdf.add_page()
     
-    font_path = "Heebo-Regular.ttf" # וודא שזה השם המדויק של הקובץ אצלך
+    font_path = "Heebo-VariableFont_wght.ttf" # וודא שזה השם המדויק של הקובץ אצלך
     if os.path.exists(font_path):
         pdf.add_font('Heebo', '', font_path, uni=True)
         pdf.set_font('Heebo', '', 14)
