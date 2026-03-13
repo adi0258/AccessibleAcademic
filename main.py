@@ -259,16 +259,10 @@ def get_lecture(lecture_id: int, session: Session = Depends(get_session)):
 
 @app.delete("/lectures/{lecture_id}")
 def delete_lecture(lecture_id: int, session: Session = Depends(get_session)):
-    """Delete a lecture and its recording file from ההרצאות שלי."""
+    """Delete a lecture from the database only (recording file on disk is kept)."""
     lecture = session.get(Lecture, lecture_id)
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
-    file_path = os.path.join("recordings", lecture.filename)
-    if os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-        except OSError:
-            pass  # continue to remove DB record even if file delete fails
     session.delete(lecture)
     session.commit()
     return {"message": "Deleted"}
