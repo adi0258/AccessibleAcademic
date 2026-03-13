@@ -157,34 +157,48 @@ def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session))
     if not lecture or lecture.status != "completed":
         raise HTTPException(status_code=404, detail="Lecture not ready")
 
-    data = json.loads(lecture.processed_content_json)
+    try:
+        data = json.loads(lecture.processed_content_json)
+    except json.JSONDecodeError:
+        data = {"topics": [], "summaries": [], "flashcards": []}
+
     pdf = FPDF()
     pdf.add_page()
-    
-    font_path = "Heebo-VariableFont_wght.ttf" 
+    usable_width = pdf.w - pdf.l_margin - pdf.r_margin
+
+    font_name = "Arial"
+    font_path = "Heebo-VariableFont_wght.ttf"
     if os.path.exists(font_path):
-        pdf.add_font('Heebo', '', font_path, uni=True)
-        pdf.set_font('Heebo', '', 14)
-    else:
-        pdf.set_font("Arial", size=12)
+        try:
+            pdf.add_font('Heebo', '', font_path, uni=True)
+            font_name = 'Heebo'
+        except Exception as e:
+            print(f"Font loading failed: {e}")
 
     def add_rtl_section(title, content_list):
-        pdf.set_x(pdf.l_margin)  # ensure full width available (avoids "not enough horizontal space")
-        pdf.set_font('Heebo', '', 16)
-        pdf.multi_cell(0, 10, txt=get_display(title), align='R')
-        pdf.set_font('Heebo', '', 12)
+        pdf.set_x(pdf.l_margin)
+        pdf.set_font(font_name, '', 16)
+        pdf.multi_cell(usable_width, 10, txt=get_display(title), align='R')
+        pdf.set_font(font_name, '', 12)
         for item in content_list:
-            if isinstance(item, dict): # לכרטיסיות
-                text = f"שאלה: {item.get('question')} | תשובה: {item.get('answer')}"
+            if isinstance(item, dict):
+                q = item.get('question', '')
+                a = item.get('answer', '')
+                text = f"שאלה: {q} | תשובה: {a}"
             else:
                 text = f"• {item}"
-            pdf.multi_cell(0, 10, txt=get_display(text), align='R')
+            if text.strip():
+                pdf.multi_cell(usable_width, 10, txt=get_display(text), align='R')
         pdf.ln(5)
 
     add_rtl_section(f"סיכום הרצאה: {lecture.title}", [])
-    add_rtl_section("נושאים מרכזיים:", data.get("topics", []))
-    add_rtl_section("סיכום מורחב:", data.get("summaries", []))
-    add_rtl_section("כרטיסיות זיכרון:", data.get("flashcards", []))
+
+    if data.get("topics"):
+        add_rtl_section("נושאים מרכזיים:", data["topics"])
+    if data.get("summaries"):
+        add_rtl_section("סיכום מורחב:", data["summaries"])
+    if data.get("flashcards"):
+        add_rtl_section("כרטיסיות זיכרון:", data["flashcards"])
 
     export_path = f"export_{lecture_id}.pdf"
     pdf.output(export_path)
