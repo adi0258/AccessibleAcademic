@@ -13,6 +13,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     body { font-family: 'Heebo', sans-serif; }
+    .perspective-1000 { perspective: 1000px; }
+    .transform-style-3d { transform-style: preserve-3d; }
+    .backface-hidden { backface-visibility: hidden; }
+    .rotate-y-180 { transform: rotateY(180deg); }
+    .flashcard-inner { transition: transform 0.5s; transform-style: preserve-3d; }
+    .flashcard-inner.flipped { transform: rotateY(180deg); }
+    .flashcard-front, .flashcard-back { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+    .flashcard-back { transform: rotateY(180deg); }
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
@@ -20,10 +28,8 @@
   <div class="bg-white shadow-sm border-b border-gray-100">
     <div class="max-w-6xl mx-auto px-6 py-6">
       <div class="flex items-center gap-3">
-        <div class="p-3 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl">
-          <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
-          </svg>
+        <div class="flex-shrink-0">
+          <img src="/assets/logo.png" alt="Accessible Academic" class="h-12 w-12 object-contain" />
         </div>
         <div>
           <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
@@ -160,25 +166,31 @@
       return parts.join('\n\n');
     }
 
-    const FLASHCARD_STYLES = [
-      'bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200',
-      'bg-gradient-to-br from-purple-50 to-pink-50 p-4 rounded-lg border border-purple-200',
-      'bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200'
-    ];
-    const FLASHCARD_TEXT = [
-      'font-semibold text-blue-900 mb-2', 'text-blue-800 text-sm',
-      'font-semibold text-purple-900 mb-2', 'text-purple-800 text-sm',
-      'font-semibold text-green-900 mb-2', 'text-green-800 text-sm'
+    const FLASHCARD_SCHEMES = [
+      { front: 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200', back: 'bg-gradient-to-br from-blue-100 to-indigo-100 border-blue-300', textFront: 'text-blue-900', textBack: 'text-blue-800' },
+      { front: 'bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200', back: 'bg-gradient-to-br from-purple-100 to-pink-100 border-purple-300', textFront: 'text-purple-900', textBack: 'text-purple-800' },
+      { front: 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200', back: 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300', textFront: 'text-green-900', textBack: 'text-green-800' }
     ];
 
     function renderFlashcardsHtml(flashcards) {
       if (!flashcards || !flashcards.length) return '';
       return flashcards.map((f, i) => {
-        const styleIdx = i % 3;
-        const cls = FLASHCARD_STYLES[styleIdx];
-        const qCls = styleIdx === 0 ? FLASHCARD_TEXT[0] : styleIdx === 1 ? FLASHCARD_TEXT[2] : FLASHCARD_TEXT[4];
-        const aCls = styleIdx === 0 ? FLASHCARD_TEXT[1] : styleIdx === 1 ? FLASHCARD_TEXT[3] : FLASHCARD_TEXT[5];
-        return `<div class="${cls}"><p class="${qCls}">שאלה: ${escapeHtml(f.question || '')}</p><p class="${aCls}">תשובה: ${escapeHtml(f.answer || '')}</p></div>`;
+        const scheme = FLASHCARD_SCHEMES[i % 3];
+        const q = escapeHtml(f.question || '');
+        const a = escapeHtml(f.answer || '');
+        return `
+          <div class="flashcard relative h-32 cursor-pointer perspective-1000" data-flipped="false">
+            <div class="flashcard-inner absolute w-full h-full inset-0">
+              <div class="flashcard-front absolute w-full h-full p-4 rounded-lg border ${scheme.front} flex flex-col items-center justify-center">
+                <p class="font-semibold ${scheme.textFront} text-center">${q}</p>
+                <p class="text-xs text-gray-500 mt-2">לחץ להצגת התשובה</p>
+              </div>
+              <div class="flashcard-back absolute w-full h-full p-4 rounded-lg border ${scheme.back} flex flex-col items-center justify-center inset-0">
+                <p class="text-sm ${scheme.textBack} text-center font-medium">${a}</p>
+                <p class="text-xs text-gray-500 mt-2">לחץ לחזרה לשאלה</p>
+              </div>
+            </div>
+          </div>`;
       }).join('');
     }
 
@@ -261,6 +273,16 @@
           listEl.setAttribute('data-expanded', isHidden ? id : '');
           details.classList.toggle('hidden', !isHidden);
           arrow.textContent = isHidden ? '▲' : '▼';
+        });
+      });
+
+      listEl.querySelectorAll('.flashcard').forEach((el) => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const inner = el.querySelector('.flashcard-inner');
+          if (inner) {
+            inner.classList.toggle('flipped');
+          }
         });
       });
     }

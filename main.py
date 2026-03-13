@@ -67,6 +67,8 @@ if not os.path.exists("recordings"):
     os.makedirs("recordings")
 
 app.mount("/static", StaticFiles(directory="recordings"), name="static")
+if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")):
+    app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 # --- UI: serve index page and file upload ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -140,6 +142,7 @@ def transcribe_audio(filename, lecture_id: Optional[int] = None):
 
     if lecture_id is not None:
         _update_lecture_progress(lecture_id, "transcribing", 15, assemblyai_transcript_id=tx_id)
+
 
     while True:
         res = requests.get(f"https://api.assemblyai.com/v2/transcript/{tx_id}", headers=headers).json()
