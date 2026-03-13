@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>מערכת תמלול הרצאות</title>
+  <title>Accessible Academic</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -29,13 +29,13 @@
     <div class="max-w-6xl mx-auto px-6 py-6">
       <div class="flex items-center gap-3">
         <div class="flex-shrink-0">
-          <img src="/assets/logo.png" alt="Accessible Academic" class="h-12 w-12 object-contain" />
+          <img src="/assets/logo.png" alt="Accessible Academic" class="h-16 w-16 object-contain" />
         </div>
         <div>
           <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
             Accessible Academic
           </h1>
-          <p class="text-gray-600 text-sm mt-1">המר הרצאות לחומרי למידה אוטומטית</p>
+          <p class="text-gray-600 text-sm mt-1">להקשיב, לסכם, להצליח</p>
         </div>
       </div>
     </div>
@@ -194,9 +194,38 @@
       }).join('');
     }
 
+    function getScrollState(listEl) {
+      const state = { scrollY: window.scrollY, cards: {} };
+      const expandedId = listEl.getAttribute('data-expanded');
+      if (!expandedId) return state;
+      const card = listEl.querySelector('.lecture-card[data-lecture-id="' + expandedId + '"]');
+      if (!card) return state;
+      const trans = card.querySelector('.transcript-scroll');
+      const summ = card.querySelector('.summary-scroll');
+      state.cards[expandedId] = {
+        transcript: trans ? trans.scrollTop : 0,
+        summary: summ ? summ.scrollTop : 0
+      };
+      return state;
+    }
+
+    function restoreScrollState(listEl, state) {
+      if (state.scrollY != null) window.scrollTo(0, state.scrollY);
+      if (!state.cards) return;
+      Object.keys(state.cards).forEach((id) => {
+        const card = listEl.querySelector('.lecture-card[data-lecture-id="' + id + '"]');
+        if (!card) return;
+        const trans = card.querySelector('.transcript-scroll');
+        const summ = card.querySelector('.summary-scroll');
+        if (trans) trans.scrollTop = state.cards[id].transcript || 0;
+        if (summ) summ.scrollTop = state.cards[id].summary || 0;
+      });
+    }
+
     function renderLectures(lectures) {
       const listEl = document.getElementById('lectures-list');
       const emptyEl = document.getElementById('lectures-empty');
+      const scrollState = getScrollState(listEl);
       listEl.innerHTML = '';
       if (!lectures.length) {
         emptyEl.classList.remove('hidden');
@@ -212,8 +241,8 @@
         card.className = 'bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden hover:shadow-lg transition lecture-card';
         card.dataset.lectureId = lecture.id;
         card.innerHTML = `
-          <div class="p-6 cursor-pointer lecture-toggle">
-            <div class="flex items-center justify-between">
+          <div class="p-6 flex items-center gap-4">
+            <div class="flex items-center justify-between flex-1 cursor-pointer lecture-toggle">
               <div class="flex items-center gap-4 flex-1">
                 <span class="status-icon">${getStatusIcon(lecture.status)}</span>
                 <div>
@@ -223,6 +252,9 @@
               </div>
               <div class="text-gray-400 expand-arrow">${expanded ? '▲' : '▼'}</div>
             </div>
+            <button type="button" class="lecture-delete flex-shrink-0 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="מחיקת ההרצאה" data-lecture-id="${lecture.id}">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </button>
           </div>
           ${isCompleted ? `
           <div class="lecture-details border-t border-gray-100 p-6 bg-gray-50 space-y-4 ${expanded ? '' : 'hidden'}">
@@ -237,15 +269,15 @@
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
                 תמלול
               </h4>
-              <div class="text-gray-600 text-sm bg-white p-4 rounded-lg border border-gray-200 max-h-96 overflow-y-auto">${escapeHtml(transcriptFull)}</div>
+              <div class="text-gray-600 text-sm bg-white p-4 rounded-lg border border-gray-200 max-h-96 overflow-y-auto transcript-scroll">${escapeHtml(transcriptFull)}</div>
             </div>
             <div>
               <h4 class="font-semibold text-gray-700 mb-2 flex items-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
                 סיכום ההרצאה
               </h4>
-              <div class="text-gray-600 text-sm bg-white p-4 rounded-lg border border-gray-200">
-                <ul class="list-disc list-inside space-y-2">${(data.summaries && data.summaries.length) ? data.summaries.map(s => '<li>' + escapeHtml((s.topic_name ? s.topic_name + ': ' : '') + (s.content || '').replace(/\n/g, ' ').substring(0, 300)) + '</li>').join('') : '<li>אין סיכום</li>'}</ul>
+              <div class="text-gray-600 text-sm bg-white p-4 rounded-lg border border-gray-200 max-h-48 overflow-y-auto summary-scroll">
+                <ul class="list-disc list-inside space-y-2">${(data.summaries && data.summaries.length) ? data.summaries.map(s => '<li>' + escapeHtml((s.topic_name ? s.topic_name + ': ' : '') + (s.content || '').replace(/\n/g, ' ')) + '</li>').join('') : '<li>אין סיכום</li>'}</ul>
               </div>
             </div>
             <div>
@@ -285,6 +317,26 @@
           }
         });
       });
+
+      listEl.querySelectorAll('.lecture-delete').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.lectureId;
+          if (!id || !confirm('למחוק את ההרצאה? פעולה זו לא ניתנת לביטול.')) return;
+          try {
+            const res = await fetch(API_BASE + '/lectures/' + id, { method: 'DELETE' });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.detail || 'מחיקה נכשלה');
+            }
+            await loadLectures();
+          } catch (err) {
+            alert(err.message || 'אירעה שגיאה במחיקה');
+          }
+        });
+      });
+
+      restoreScrollState(listEl, scrollState);
     }
 
     function escapeHtml(text) {
@@ -294,10 +346,19 @@
       return div.innerHTML;
     }
 
+    function lecturesSignature(lectures) {
+      return JSON.stringify((lectures || []).map((l) => ({ id: l.id, status: l.status })));
+    }
+
+    let lastLecturesSignature = '';
+
     async function loadLectures() {
       try {
         const res = await fetch(API_BASE + '/lectures');
         const lectures = await res.json();
+        const sig = lecturesSignature(lectures);
+        if (sig === lastLecturesSignature) return;
+        lastLecturesSignature = sig;
         renderLectures(lectures);
       } catch (e) {
         console.error('Failed to load lectures', e);

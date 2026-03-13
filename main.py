@@ -256,6 +256,23 @@ def get_lecture(lecture_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Lecture not found")
     return lecture
 
+
+@app.delete("/lectures/{lecture_id}")
+def delete_lecture(lecture_id: int, session: Session = Depends(get_session)):
+    """Delete a lecture and its recording file from ההרצאות שלי."""
+    lecture = session.get(Lecture, lecture_id)
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+    file_path = os.path.join("recordings", lecture.filename)
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass  # continue to remove DB record even if file delete fails
+    session.delete(lecture)
+    session.commit()
+    return {"message": "Deleted"}
+
 # --- 7. ייצוא ל-PDF (תיקון חיתוך המילים) ---
 @app.get("/lectures/{lecture_id}/export")
 def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session)):
@@ -340,6 +357,11 @@ def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session))
             write_rtl_multiline(f"תשובה: {card.get('answer')}", 12)
             pdf.ln(6)
 
+    # Safe filename for download: summery-[lecture name].pdf
+    safe_title = "".join(c for c in lecture.title if c not in r'\/:*?"<>|').strip() or f"lecture-{lecture_id}"
+    safe_title = safe_title.replace("\n", " ").replace("\r", " ")[:200]
+    download_filename = f"summery-{safe_title}.pdf"
+
     export_path = f"export_{lecture_id}.pdf"
     pdf.output(export_path)
-    return FileResponse(export_path, filename=f"summary_{lecture_id}.pdf")
+    return FileResponse(export_path, filename=download_filename)
