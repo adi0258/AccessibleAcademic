@@ -88,9 +88,9 @@ def generate_study_material(text):
     prompt = f"""
     נתח את תמלול ההרצאה האקדמית הבא בעברית והחזר JSON בלבד.
     על ה-JSON להכיל:
-    1. "topics": רשימה של כותרות הנושאים המרכזיים בקצרה.
-    2. "summaries": רשימה של אובייקטים. כל אובייקט מכיל "topic_name" ו-"content" (סיכום מפורט ומעמיק של אותו נושא על בסיס ההרצאה).
-    3. "flashcards": רשימה של אובייקטים עם "question" ו-"answer".
+    1. "topics": רשימה של כותרות הנושאים המרכזיים בקצרה (בעברית).
+    2. "summaries": רשימה של אובייקטים. כל אובייקט מכיל "topic_name" ו-"content" (סיכום בעברית מפורט ומעמיק של אותו נושא על בסיס ההרצאה).
+    3. "flashcards": רשימה של אובייקטים עם "question" ו-"answer" (שאלה ותשובה בעברית).
 
     התמלול:
     {text}
@@ -99,7 +99,7 @@ def generate_study_material(text):
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": "You are an expert academic assistant. Your summaries are detailed, structured, and strictly based on the provided transcript."},
+            {"role": "system", "content": "You are an expert academic assistant. Your summaries are detailed, structured, and strictly based on the provided transcript. All text should be in Hebrew."},
             {"role": "user", "content": prompt}
         ],
         response_format={ "type": "json_object" }
