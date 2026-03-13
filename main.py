@@ -163,6 +163,9 @@ def export_lecture_pdf(lecture_id: int, session: Session = Depends(get_session))
         data = {"topics": [], "summaries": [], "flashcards": []}
 
     pdf = FPDF()
+    # Explicit margins help prevent right-aligned RTL text from being clipped.
+    pdf.set_margins(18, 18, 18)
+    pdf.set_auto_page_break(auto=True, margin=18)
     pdf.add_page()
     usable_width = pdf.w - pdf.l_margin - pdf.r_margin
 
