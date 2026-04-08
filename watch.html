@@ -87,6 +87,49 @@
       el.textContent = seg ? seg.text.trim() : '';
     }
 
+    function msToVttTimestamp(ms) {
+      const total = Math.max(0, Math.floor(ms));
+      const hours = Math.floor(total / 3600000);
+      const minutes = Math.floor((total % 3600000) / 60000);
+      const seconds = Math.floor((total % 60000) / 1000);
+      const millis = total % 1000;
+      return String(hours).padStart(2, '0') + ':' +
+        String(minutes).padStart(2, '0') + ':' +
+        String(seconds).padStart(2, '0') + '.' +
+        String(millis).padStart(3, '0');
+    }
+
+    function attachNativeSubtitleTrack(media, segments) {
+      if (!media || !segments || !segments.length) return;
+      const existingTrack = media.querySelector('track[data-generated="true"]');
+      if (existingTrack) {
+        if (existingTrack.dataset.blobUrl) {
+          URL.revokeObjectURL(existingTrack.dataset.blobUrl);
+        }
+        existingTrack.remove();
+      }
+
+      const cues = segments.map((seg, idx) => {
+        const safeText = (seg.text || '').replace(/\r?\n/g, ' ').trim();
+        return String(idx + 1) + '\n' +
+          msToVttTimestamp(seg.start) + ' --> ' + msToVttTimestamp(seg.end) + '\n' +
+          safeText + '\n';
+      }).join('\n');
+      const vtt = 'WEBVTT\n\n' + cues;
+      const blob = new Blob([vtt], { type: 'text/vtt' });
+      const blobUrl = URL.createObjectURL(blob);
+
+      const track = document.createElement('track');
+      track.kind = 'captions';
+      track.srclang = 'he';
+      track.label = 'עברית';
+      track.default = true;
+      track.src = blobUrl;
+      track.dataset.generated = 'true';
+      track.dataset.blobUrl = blobUrl;
+      media.appendChild(track);
+    }
+
     if (!lectureId) {
       document.getElementById('loading').classList.add('hidden');
       document.getElementById('error').classList.remove('hidden');
@@ -120,6 +163,7 @@
             const words = typeof lecture.words_json === 'string' ? JSON.parse(lecture.words_json || '[]') : (lecture.words_json || []);
             segments = buildSegments(words);
           } catch (_) {}
+          attachNativeSubtitleTrack(media, segments);
 
           media.addEventListener('timeupdate', function () {
             showSubtitleAt(segments, media.currentTime * 1000);
