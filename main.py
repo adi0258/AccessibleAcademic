@@ -35,7 +35,7 @@ class Lecture(SQLModel, table=True):
     processed_content_json: str = "{}"
     # Progress tracking (AssemblyAI stage + derived percentage)
     assemblyai_transcript_id: Optional[str] = None
-    processing_stage: Optional[str] = None  # uploading, transcribing, generating_study_material, completed
+    processing_stage: Optional[str] = None  # boosting_audio, uploading, transcribing, refining_transcript, generating_study_material, completed
     progress_percent: Optional[int] = None  # 0-100
 
 def create_db_and_tables():
@@ -186,6 +186,46 @@ def transcribe_audio(filename, lecture_id: Optional[int] = None):
             raise Exception(res.get('error', 'Transcription failed'))
         time.sleep(3)
 
+def refine_transcript(text: str) -> str:
+    """Clean Hebrew transcript while preserving original meaning."""
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    prompt = f"""
+    להלן תמלול גולמי של הרצאה אקדמית בעברית.
+    בצע עריכה לשונית בלבד תוך שמירה מלאה על המשמעות המקורית:
+    1. הוסף פיסוק תקין.
+    2. תקן שגיאות ניסוח/דקדוק ושיבושי תמלול ברורים.
+    3. הסר מילות מילוי מיותרות (למשל: "אה", "אממ", "כאילו") כשאין להן ערך.
+    4. שמור על טרמינולוגיה אקדמית מדויקת.
+
+    החזר את הטקסט המתוקן בלבד, ללא הסברים.
+
+    תמלול:
+    {text}
+    """
+    last_err = None
+    for model_name in OPENAI_MODELS:
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": "You are an expert Hebrew academic editor. Preserve meaning while improving readability."},
+                    {"role": "user", "content": prompt}
+                ],
+            )
+            return (response.choices[0].message.content or "").strip() or text
+        except BadRequestError as e:
+            err_body = getattr(e, "body", {}) or {}
+            err_code = ((err_body.get("error") or {}).get("code")) if isinstance(err_body, dict) else None
+            if err_code in {"model_not_found", "unsupported_model"}:
+                last_err = e
+                continue
+            raise
+        except Exception as e:
+            last_err = e
+            continue
+    print(f"Transcript refinement failed, using raw transcript. Error: {last_err}")
+    return text
+
 def generate_study_material(text):
     client = OpenAI(api_key=OPENAI_API_KEY)
     
@@ -252,16 +292,18 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
                     session_boosted.commit()
 
             result = transcribe_audio(boosted_path, lecture_id=lecture_id)
+            _update_lecture_progress(lecture_id, "refining_transcript", 75)
+            refined_text = refine_transcript(result["text"])
             with Session(engine) as session2:
                 lec = session2.get(Lecture, lecture_id)
                 if lec:
-                    lec.transcript = result["text"]
+                    lec.transcript = refined_text
                     lec.words_json = json.dumps(result.get("words", []))
                     session2.add(lec)
                     session2.commit()
 
-            _update_lecture_progress(lecture_id, "generating_study_material", 85)
-            processed = generate_study_material(result["text"])
+            _update_lecture_progress(lecture_id, "generating_study_material", 90)
+            processed = generate_study_material(refined_text)
             with Session(engine) as session3:
                 lec = session3.get(Lecture, lecture_id)
                 if lec:
