@@ -130,6 +130,22 @@
       media.appendChild(track);
     }
 
+    function setNativeTrackMode(media, enabled) {
+      if (!media || !media.textTracks) return;
+      for (let i = 0; i < media.textTracks.length; i++) {
+        media.textTracks[i].mode = enabled ? 'showing' : 'disabled';
+      }
+    }
+
+    function syncSubtitleDisplayMode(media) {
+      const overlay = document.getElementById('subtitle-overlay');
+      const isFullscreen = !!document.fullscreenElement;
+      if (overlay) {
+        overlay.style.display = isFullscreen ? 'none' : '';
+      }
+      setNativeTrackMode(media, isFullscreen);
+    }
+
     if (!lectureId) {
       document.getElementById('loading').classList.add('hidden');
       document.getElementById('error').classList.remove('hidden');
@@ -164,6 +180,10 @@
             segments = buildSegments(words);
           } catch (_) {}
           attachNativeSubtitleTrack(media, segments);
+          syncSubtitleDisplayMode(media);
+          document.addEventListener('fullscreenchange', function () {
+            syncSubtitleDisplayMode(media);
+          });
 
           media.addEventListener('timeupdate', function () {
             showSubtitleAt(segments, media.currentTime * 1000);
