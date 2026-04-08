@@ -123,7 +123,7 @@
       track.kind = 'captions';
       track.srclang = 'he';
       track.label = 'עברית';
-      track.default = true;
+      track.default = false;
       track.src = blobUrl;
       track.dataset.generated = 'true';
       track.dataset.blobUrl = blobUrl;
@@ -139,7 +139,8 @@
 
     function syncSubtitleDisplayMode(media) {
       const overlay = document.getElementById('subtitle-overlay');
-      const isFullscreen = !!document.fullscreenElement;
+      const fullscreenEl = document.fullscreenElement || document.webkitFullscreenElement;
+      const isFullscreen = fullscreenEl === media;
       if (overlay) {
         overlay.style.display = isFullscreen ? 'none' : '';
       }
@@ -182,6 +183,12 @@
           attachNativeSubtitleTrack(media, segments);
           syncSubtitleDisplayMode(media);
           document.addEventListener('fullscreenchange', function () {
+            syncSubtitleDisplayMode(media);
+          });
+          document.addEventListener('webkitfullscreenchange', function () {
+            syncSubtitleDisplayMode(media);
+          });
+          media.addEventListener('loadedmetadata', function () {
             syncSubtitleDisplayMode(media);
           });
 
