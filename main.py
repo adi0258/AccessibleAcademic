@@ -1,3 +1,4 @@
+import subprocess
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -111,6 +112,32 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 def _assembly_headers():
     return {'authorization': ASSEMBLY_API_KEY}
 
+def boost_audio(input_path: str) -> str:
+    """
+    Boost media audio volume using FFmpeg while copying video codec for speed.
+    Returns boosted file path; falls back to original on failure.
+    """
+    folder = os.path.dirname(input_path)
+    base = os.path.basename(input_path)
+    output_filename = f"boosted_{base}"
+    output_path = os.path.join(folder, output_filename)
+
+    cmd = [
+        "ffmpeg",
+        "-i", input_path,
+        "-af", "volume=3.0",
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-y",
+        output_path,
+    ]
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return output_path
+    except Exception as e:
+        print(f"Audio boosting failed: {e}")
+        return input_path
+
 def _update_lecture_progress(lecture_id: int, processing_stage: str, progress_percent: int, assemblyai_transcript_id: Optional[str] = None):
     """Persist progress so the API can return it to the UI."""
     with Session(engine) as session:
@@ -193,7 +220,18 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
         if not lecture:
             return
         try:
-            result = transcribe_audio(audio_filename, lecture_id=lecture_id)
+            _update_lecture_progress(lecture_id, "boosting_audio", 5)
+            boosted_path = boost_audio(audio_filename)
+
+            # Persist boosted media filename so playback serves the amplified file.
+            with Session(engine) as session_boosted:
+                lec = session_boosted.get(Lecture, lecture_id)
+                if lec:
+                    lec.filename = os.path.basename(boosted_path)
+                    session_boosted.add(lec)
+                    session_boosted.commit()
+
+            result = transcribe_audio(boosted_path, lecture_id=lecture_id)
             with Session(engine) as session2:
                 lec = session2.get(Lecture, lecture_id)
                 if lec:
