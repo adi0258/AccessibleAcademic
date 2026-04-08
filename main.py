@@ -9,7 +9,7 @@ import requests
 import time
 import os
 import json
-from openai import OpenAI
+from openai import OpenAI, BadRequestError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -106,6 +106,7 @@ def on_startup():
 
 ASSEMBLY_API_KEY = os.getenv("ASSEMBLY_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODELS = [m.strip() for m in os.getenv("OPENAI_MODELS", "gpt-4.1-mini,gpt-4o-mini,gpt-4.1").split(",") if m.strip()]
 
 # --- 4. לוגיקת AI ---
 
@@ -203,15 +204,34 @@ def generate_study_material(text):
     {text}
     """
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You are an expert academic professor. You write detailed, long, and structured summaries in Hebrew. You ensure each summary is comprehensive."},
-            {"role": "user", "content": prompt}
-        ],
-        response_format={ "type": "json_object" }
-    )
-    return response.choices[0].message.content
+    last_err = None
+    for model_name in OPENAI_MODELS:
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": "You are an expert academic professor. You write detailed, long, and structured summaries in Hebrew. You ensure each summary is comprehensive."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            return response.choices[0].message.content
+        except BadRequestError as e:
+            # Try next configured model when a model is unavailable for this project.
+            err_body = getattr(e, "body", {}) or {}
+            err_code = ((err_body.get("error") or {}).get("code")) if isinstance(err_body, dict) else None
+            if err_code in {"model_not_found", "unsupported_model"}:
+                last_err = e
+                continue
+            raise
+        except Exception as e:
+            last_err = e
+            continue
+
+    raise RuntimeError(
+        "Failed to generate study material with configured OpenAI models: "
+        + ", ".join(OPENAI_MODELS)
+    ) from last_err
 
 # --- 5. ה-Pipeline ---
 def run_full_pipeline(lecture_id: int, audio_filename: str):
