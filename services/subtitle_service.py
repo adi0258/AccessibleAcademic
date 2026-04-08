@@ -22,6 +22,15 @@ def _ms_to_srt_timestamp(ms: int) -> str:
     return f"{hours:02}:{minutes:02}:{seconds:02},{millis:03}"
 
 
+def _ms_to_vtt_timestamp(ms: int) -> str:
+    total = max(0, int(ms))
+    hours = total // 3600000
+    minutes = (total % 3600000) // 60000
+    seconds = (total % 60000) // 1000
+    millis = total % 1000
+    return f"{hours:02}:{minutes:02}:{seconds:02}.{millis:03}"
+
+
 def _build_segments(words):
     if not words:
         return []
@@ -77,3 +86,33 @@ def export_lecture_srt(lecture_id: int, session: Session, base_dir: str):
         f.write(srt_content)
 
     return FileResponse(export_path, filename=download_filename, media_type="application/x-subrip")
+
+
+def export_lecture_vtt(lecture_id: int, session: Session, base_dir: str):
+    lecture = session.get(Lecture, lecture_id)
+    if not lecture or lecture.status != "completed":
+        raise HTTPException(status_code=404, detail="Lecture not ready")
+
+    try:
+        words = json.loads(lecture.words_json or "[]")
+    except Exception:
+        words = []
+    segments = _build_segments(words)
+    if not segments:
+        raise HTTPException(status_code=400, detail="No subtitle timing data available for this lecture")
+
+    lines = ["WEBVTT", ""]
+    for seg in segments:
+        lines.append(f"{_ms_to_vtt_timestamp(seg['start'])} --> {_ms_to_vtt_timestamp(seg['end'])}")
+        lines.append(seg["text"])
+        lines.append("")
+    vtt_content = "\n".join(lines).strip() + "\n"
+
+    safe_title = "".join(c for c in lecture.title if c not in r"\/:*?\"<>|").strip() or f"lecture-{lecture_id}"
+    safe_title = safe_title.replace("\n", " ").replace("\r", " ")[:200]
+    download_filename = f"subtitles-{safe_title}.vtt"
+    export_path = os.path.join(base_dir, f"export_{lecture_id}.vtt")
+    with open(export_path, "w", encoding="utf-8") as f:
+        f.write(vtt_content)
+
+    return FileResponse(export_path, filename=download_filename, media_type="text/vtt")

@@ -8,7 +8,7 @@ from core.database import get_session
 from models.lecture import Lecture
 from services.pdf_service import export_lecture_pdf
 from services.pipeline_service import run_full_pipeline
-from services.subtitle_service import export_lecture_srt
+from services.subtitle_service import export_lecture_srt, export_lecture_vtt
 
 
 router = APIRouter()
@@ -87,3 +87,14 @@ def export_lecture(lecture_id: int, session: Session = Depends(get_session)):
 @router.get("/lectures/{lecture_id}/export-srt")
 def export_lecture_subtitles(lecture_id: int, session: Session = Depends(get_session)):
     return export_lecture_srt(lecture_id, session, BASE_DIR)
+
+
+@router.get("/lectures/{lecture_id}/export-vtt")
+def export_lecture_subtitles_vtt(lecture_id: int, session: Session = Depends(get_session)):
+    return export_lecture_vtt(lecture_id, session, BASE_DIR)
+
+
+@router.get("/lectures/{lecture_id}/export-vvt")
+def export_lecture_subtitles_vvt_alias(lecture_id: int, session: Session = Depends(get_session)):
+    # Backward-compatible alias for common typo ("vvt" instead of "vtt")
+    return export_lecture_vtt(lecture_id, session, BASE_DIR)
