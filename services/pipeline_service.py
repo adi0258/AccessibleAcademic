@@ -6,7 +6,7 @@ from sqlmodel import Session
 
 from core.database import engine
 from models.lecture import Lecture
-from services.ai_service import generate_study_material, refine_transcript, transcribe_audio
+from services.ai_service import generate_study_material, transcribe_audio
 from services.audio_service import boost_audio
 
 
@@ -47,19 +47,19 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
 
         result = transcribe_audio(boosted_path, lecture_id=lecture_id, progress_cb=_update_lecture_progress)
 
-        _update_lecture_progress(lecture_id, "refining_transcript", 75)
-        refined_text = refine_transcript(result["text"])
+        _update_lecture_progress(lecture_id, "transcription_completed", 75)
+        transcript_text = result["text"]
 
         with Session(engine) as session2:
             lec = session2.get(Lecture, lecture_id)
             if lec:
-                lec.transcript = refined_text
+                lec.transcript = transcript_text
                 lec.words_json = json.dumps(result.get("words", []))
                 session2.add(lec)
                 session2.commit()
 
         _update_lecture_progress(lecture_id, "generating_study_material", 90)
-        processed = generate_study_material(refined_text)
+        processed = generate_study_material(transcript_text)
         with Session(engine) as session3:
             lec = session3.get(Lecture, lecture_id)
             if lec:
