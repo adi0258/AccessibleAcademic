@@ -173,6 +173,7 @@
       if (overlay) {
         overlay.style.display = captionsVisible && !isFullscreen ? '' : 'none';
       }
+      // Caption timing stays active even while hidden; this only switches the visible output mode.
       setNativeTrackMode(media, captionsVisible && isFullscreen);
       updateCaptionsToggleButton();
     }

@@ -8,6 +8,7 @@
     initPromise: null
   };
 
+  // Prefer explicit browser locale signals, but default to Hebrew when none are available.
   function detectLocale() {
     const candidates = [];
     if (global.navigator) {
