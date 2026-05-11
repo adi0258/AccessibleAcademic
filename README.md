@@ -8,14 +8,13 @@ Accessible Academic is a cutting-edge platform designed to transform standard ac
 * **Smart Audio Enhancement:** Automatically detects and boosts low-volume recordings using FFmpeg (3x gain) to ensure clarity before transcription.
 * **High-Accuracy Hebrew Transcription:** Leverages **AssemblyAI** for precise speech-to-text with word-level timestamps.
 * **AI Transcript Refinement:** A unique post-processing step using **GPT-4o** to fix punctuation, remove filler words, and ensure an academic-grade reading experience.
-* [cite_start]**Automated Study Suite:** Generates structured topics, deep-dive summaries, and interactive flashcards directly from the lecture content [cite: 467-469, 476-477].
+* **Automated Study Suite:** Generates structured topics, deep-dive summaries, and interactive flashcards directly from the lecture content.
 * **Smart Localization:** Automatically applies Hebrew or English UI text and switches between RTL and LTR layouts based on the user's system locale, with Hebrew as the default fallback.
 * **Interactive Caption Control:** Lets users show or hide captions without losing synchronization, including seamless switching between the inline overlay and the fullscreen subtitle track.
-* **Panopto Automation:** Full integration via Webhooks, including automatic VTT caption upload back to the institutional server.
 * **Professional PDF Export:** Clean, RTL-supported PDF summaries designed for Israeli students.
 
 ## 🧠 The "Why" - Our Mission
-This project was inspired by the personal journey of our co-founder, **Adi Tapiro**, a hearing-impaired Computer Science student. Faced with the daily challenge of following recordings without accurate captions, we set out to build a solution that ensures true academic inclusion for everyone.
+This project was inspired by the personal journey of **Adi Tapiro**, a hearing-impaired Computer Science student. Faced with the daily challenge of following recordings without accurate captions, we set out to build a solution that ensures true academic inclusion for everyone.
 
 ## 🛠️ Technology Stack
 
