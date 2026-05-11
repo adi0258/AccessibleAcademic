@@ -4,3 +4,6 @@ sqlmodel
 openai
 uvicorn[standard]
 python-dotenv
+python-bidi
+requests
+python-multipart

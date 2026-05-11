@@ -15,8 +15,33 @@ OPENAI_MODELS = [
 ]
 
 
+def _require_env(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
 def _assembly_headers():
-    return {"authorization": ASSEMBLY_API_KEY}
+    return {"authorization": _require_env("ASSEMBLY_API_KEY")}
+
+
+def _response_json(response: requests.Response, step: str) -> dict:
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        body = (response.text or "").strip()
+        detail = body[:300] if body else "<empty response body>"
+        raise RuntimeError(
+            f"AssemblyAI {step} failed with status {response.status_code}: {detail}"
+        ) from exc
+
+    try:
+        return response.json()
+    except ValueError as exc:
+        body = (response.text or "").strip()
+        detail = body[:300] if body else "<empty response body>"
+        raise RuntimeError(f"AssemblyAI {step} returned invalid JSON: {detail}") from exc
 
 
 def transcribe_audio(filename: str, lecture_id: Optional[int] = None, progress_cb=None):
@@ -31,21 +56,38 @@ def transcribe_audio(filename: str, lecture_id: Optional[int] = None, progress_c
     if lecture_id is not None and progress_cb:
         progress_cb(lecture_id, "uploading", 5)
 
-    up_res = requests.post("https://api.assemblyai.com/v2/upload", headers=headers, data=read_file(filename))
-    audio_url = up_res.json()["upload_url"]
+    up_res = requests.post(
+        "https://api.assemblyai.com/v2/upload",
+        headers=headers,
+        data=read_file(filename),
+        timeout=120,
+    )
+    upload_payload = _response_json(up_res, "upload")
+    audio_url = upload_payload.get("upload_url")
+    if not audio_url:
+        raise RuntimeError(f"AssemblyAI upload response missing upload_url: {upload_payload}")
 
     tx_res = requests.post(
         "https://api.assemblyai.com/v2/transcript",
         json={"audio_url": audio_url, "language_code": "he"},
         headers=headers,
+        timeout=30,
     )
-    tx_id = tx_res.json()["id"]
+    transcript_payload = _response_json(tx_res, "transcript submission")
+    tx_id = transcript_payload.get("id")
+    if not tx_id:
+        raise RuntimeError(f"AssemblyAI transcript response missing id: {transcript_payload}")
 
     if lecture_id is not None and progress_cb:
         progress_cb(lecture_id, "transcribing", 15, assemblyai_transcript_id=tx_id)
 
     while True:
-        res = requests.get(f"https://api.assemblyai.com/v2/transcript/{tx_id}", headers=headers).json()
+        poll_res = requests.get(
+            f"https://api.assemblyai.com/v2/transcript/{tx_id}",
+            headers=headers,
+            timeout=30,
+        )
+        res = _response_json(poll_res, "status polling")
         status = res.get("status", "")
         if lecture_id is not None and progress_cb:
             if status == "queued":
@@ -60,7 +102,7 @@ def transcribe_audio(filename: str, lecture_id: Optional[int] = None, progress_c
 
 
 def generate_study_material(text: str):
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    client = OpenAI(api_key=_require_env("OPENAI_API_KEY"))
 
     prompt = f"""
     נתח את תמלול ההרצאה האקדמית הבא בעברית והחזר JSON בלבד.

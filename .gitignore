@@ -1,12 +1,16 @@
-# Environment variables
+# Environment files
 .env
+.env.*
+!.env.example
 
-# Database
+# Local databases
 database.db
 *.db
 
-# Recordings directory
-/recordings
+# Generated project assets
+recordings/
+export_*.pdf
+export_*.vtt
 
 # Python
 __pycache__/
@@ -19,20 +23,17 @@ venv/
 ENV/
 env/
 
-# IDE
+# IDE and editor files
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 
-# OS
+# OS files
 .DS_Store
 Thumbs.db
 
-# PDF exports
-export_*.pdf
-
-# Font files (if you don't want to commit them)
+# Local font assets
 *.ttf
 *.otf
