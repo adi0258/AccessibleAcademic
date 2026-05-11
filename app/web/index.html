@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="he" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,6 +10,14 @@
       theme: { extend: {} }
     }
   </script>
+  <script>
+    (function () {
+      const locale = (navigator.language || "en").toLowerCase().startsWith("he") ? "he" : "en";
+      document.documentElement.lang = locale;
+      document.documentElement.dir = locale === "he" ? "rtl" : "ltr";
+    })();
+  </script>
+  <script src="/assets/i18n.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     body { font-family: 'Heebo', sans-serif; }
@@ -29,13 +37,13 @@
     <div class="max-w-6xl mx-auto px-6 py-6">
       <div class="flex items-center gap-3">
         <div class="flex-shrink-0">
-          <img src="/assets/logo.png" alt="Accessible Academic" class="h-24 w-24 object-contain" />
+          <img src="/assets/logo.png" alt="Accessible Academic" data-i18n-alt="common.appName" class="h-24 w-24 object-contain" />
         </div>
         <div>
           <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
             Accessible Academic
           </h1>
-          <p class="text-gray-600 text-sm mt-1">להקשיב, לסכם, להצליח</p>
+          <p class="text-gray-600 text-sm mt-1" data-i18n="common.tagline">להקשיב, לסכם, להצליח</p>
         </div>
       </div>
     </div>
@@ -48,22 +56,23 @@
         <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
         </svg>
-        <h2 class="text-2xl font-bold text-gray-800">העלאת הרצאה חדשה</h2>
+        <h2 class="text-2xl font-bold text-gray-800" data-i18n="index.newLecture">העלאת הרצאה חדשה</h2>
       </div>
 
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">כותרת ההרצאה</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="index.lectureTitle">כותרת ההרצאה</label>
           <input
             type="text"
             id="lecture-title"
             placeholder="לדוגמה: מבוא למדעי המחשב - שיעור 3"
+            data-i18n-placeholder="index.lectureTitlePlaceholder"
             class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
           />
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">קובץ אודיו</label>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="index.mediaFile">קובץ אודיו / וידאו</label>
           <div class="relative">
             <input type="file" id="file-upload" accept="audio/*,video/*" class="hidden" />
             <label
@@ -74,8 +83,8 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 6l12-3" />
               </svg>
               <div class="text-center">
-                <p class="text-gray-600 font-medium" id="file-label">לחץ לבחירת קובץ</p>
-                <p class="text-sm text-gray-400 mt-1">MP3, WAV, M4A, MP4</p>
+                <p class="text-gray-600 font-medium" id="file-label" data-i18n="index.fileSelect">לחץ לבחירת קובץ</p>
+                <p class="text-sm text-gray-400 mt-1" data-i18n="index.fileFormats">MP3, WAV, M4A, MP4</p>
               </div>
             </label>
           </div>
@@ -103,7 +112,7 @@
         <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
         </svg>
-        ההרצאות שלי
+        <span data-i18n="index.myLectures">ההרצאות שלי</span>
       </h2>
 
       <div id="lectures-container">
@@ -111,7 +120,7 @@
           <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
           </svg>
-          <p class="text-gray-500 text-lg">עדיין אין הרצאות. העלה את ההרצאה הראשונה שלך!</p>
+          <p class="text-gray-500 text-lg" data-i18n="index.noLectures">עדיין אין הרצאות. העלה את ההרצאה הראשונה שלך!</p>
         </div>
         <div id="lectures-list" class="space-y-4"></div>
       </div>
@@ -120,6 +129,14 @@
 
   <script>
     const API_BASE = '';
+    let t = function (key) { return key; };
+
+    function setUploadButtonLabel(isUploading) {
+      const btnText = document.getElementById('btn-text');
+      if (!btnText) return;
+      const label = isUploading ? t('index.uploading') : t('index.startProcessing');
+      btnText.innerHTML = '<svg class="w-5 h-5 inline-block ml-2' + (isUploading ? ' animate-spin' : '') + '" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg> ' + label;
+    }
 
     function getStatusIcon(status) {
       if (status === 'completed') {
@@ -135,11 +152,11 @@
     }
 
     function getStatusText(status) {
-      if (status === 'completed') return 'הושלם';
-      if (status === 'processing') return 'בעיבוד...';
-      if (status && status.startsWith('error')) return 'שגיאה';
+      if (status === 'completed') return t('index.statusCompleted');
+      if (status === 'processing') return t('index.statusProcessing');
+      if (status && status.startsWith('error')) return t('index.statusError');
       if (status) return status;
-      return 'ממתין';
+      return t('index.statusPending');
     }
 
     function parseProcessedContent(processedContentJson) {
@@ -155,13 +172,13 @@
       const data = parseProcessedContent(processedContentJson);
       const parts = [];
       if (data.topics && data.topics.length) {
-        parts.push('**נושאים מרכזיים:**\n• ' + data.topics.join('\n• '));
+        parts.push('**' + t('index.topics') + ':**\n• ' + data.topics.join('\n• '));
       }
       if (data.summaries && data.summaries.length) {
-        parts.push('**סיכום:**\n' + data.summaries.map(s => `${s.topic_name || 'נושא'}:\n${s.content || ''}`).join('\n\n'));
+        parts.push('**' + t('index.summary') + ':**\n' + data.summaries.map(s => `${s.topic_name || t('index.summaryTopicFallback')}:\n${s.content || ''}`).join('\n\n'));
       }
       if (data.flashcards && data.flashcards.length) {
-        parts.push('**כרטיסיות:**\n' + data.flashcards.map((f) => `ש: ${f.question}\nת: ${f.answer}`).join('\n\n'));
+        parts.push('**' + t('index.flashcards') + ':**\n' + data.flashcards.map((f) => `${t('index.questionPrefix')} ${f.question}\n${t('index.answerPrefix')} ${f.answer}`).join('\n\n'));
       }
       return parts.join('\n\n');
     }
@@ -183,11 +200,11 @@
             <div class="flashcard-inner absolute w-full h-full inset-0">
               <div class="flashcard-front absolute w-full h-full p-4 rounded-lg border ${scheme.front} flex flex-col items-center justify-center">
                 <p class="font-semibold ${scheme.textFront} text-center">${q}</p>
-                <p class="text-xs text-gray-500 mt-2">לחץ להצגת התשובה</p>
+                <p class="text-xs text-gray-500 mt-2">${t('index.flashcardShowAnswer')}</p>
               </div>
               <div class="flashcard-back absolute w-full h-full p-4 rounded-lg border ${scheme.back} flex flex-col items-center justify-center inset-0">
                 <p class="text-sm ${scheme.textBack} text-center font-medium">${a}</p>
-                <p class="text-xs text-gray-500 mt-2">לחץ לחזרה לשאלה</p>
+                <p class="text-xs text-gray-500 mt-2">${t('index.flashcardBackToQuestion')}</p>
               </div>
             </div>
           </div>`;
@@ -252,7 +269,7 @@
               </div>
               <div class="text-gray-400 expand-arrow">${expanded ? '▲' : '▼'}</div>
             </div>
-            <button type="button" class="lecture-delete flex-shrink-0 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="מחיקת ההרצאה" data-lecture-id="${lecture.id}">
+            <button type="button" class="lecture-delete flex-shrink-0 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="${t('index.deleteLectureTitle')}" data-lecture-id="${lecture.id}">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
             </button>
           </div>
@@ -261,37 +278,37 @@
             <div>
               <a href="${API_BASE}/watch/${lecture.id}" target="_blank" class="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 px-6 rounded-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition mb-4">
                 <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" /></svg>
-                צפייה בהרצאה עם כתוביות
+                ${t('index.watchWithCaptions')}
               </a>
             </div>
             <div>
               <h4 class="font-semibold text-gray-700 mb-2 flex items-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-                תמלול
+                ${t('index.transcript')}
               </h4>
               <div class="text-gray-600 text-sm bg-white p-4 rounded-lg border border-gray-200 max-h-96 overflow-y-auto transcript-scroll">${escapeHtml(transcriptFull)}</div>
             </div>
             <div>
               <h4 class="font-semibold text-gray-700 mb-2 flex items-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-                סיכום ההרצאה
+                ${t('index.lectureSummary')}
               </h4>
               <div class="text-gray-600 text-sm bg-white p-4 rounded-lg border border-gray-200 max-h-48 overflow-y-auto summary-scroll">
-                <ul class="list-disc list-inside space-y-2">${(data.summaries && data.summaries.length) ? data.summaries.map(s => '<li>' + escapeHtml((s.topic_name ? s.topic_name + ': ' : '') + (s.content || '').replace(/\n/g, ' ')) + '</li>').join('') : '<li>אין סיכום</li>'}</ul>
+                <ul class="list-disc list-inside space-y-2">${(data.summaries && data.summaries.length) ? data.summaries.map(s => '<li>' + escapeHtml((s.topic_name ? s.topic_name + ': ' : '') + (s.content || '').replace(/\n/g, ' ')) + '</li>').join('') : '<li>' + t('index.noSummary') + '</li>'}</ul>
               </div>
             </div>
             <div>
               <h4 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-                כרטיסיות לימוד
+                ${t('index.studyFlashcards')}
               </h4>
-              <div class="space-y-3">${renderFlashcardsHtml(data.flashcards) || '<p class="text-gray-500 text-sm">אין כרטיסיות</p>'}</div>
+              <div class="space-y-3">${renderFlashcardsHtml(data.flashcards) || '<p class="text-gray-500 text-sm">' + t('index.noFlashcards') + '</p>'}</div>
             </div>
             <div class="flex items-center gap-2">
-              <a href="${API_BASE}/lectures/${lecture.id}/export" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">ייצוא PDF</a>
-              <a href="${API_BASE}/lectures/${lecture.id}/export-docx" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">ייצוא Word</a>
-              <a href="${API_BASE}/lectures/${lecture.id}/export-srt" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700">ייצוא SRT</a>
-              <a href="${API_BASE}/lectures/${lecture.id}/export-vtt" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">ייצוא VTT</a>
+              <a href="${API_BASE}/lectures/${lecture.id}/export" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">${t('index.exportPdf')}</a>
+              <a href="${API_BASE}/lectures/${lecture.id}/export-docx" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">${t('index.exportWord')}</a>
+              <a href="${API_BASE}/lectures/${lecture.id}/export-srt" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700">${t('index.exportSrt')}</a>
+              <a href="${API_BASE}/lectures/${lecture.id}/export-vtt" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg text-sm font-medium hover:bg-cyan-700">${t('index.exportVtt')}</a>
             </div>
           </div>
           ` : ''}
@@ -327,16 +344,16 @@
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const id = btn.dataset.lectureId;
-          if (!id || !confirm('למחוק את ההרצאה? פעולה זו לא ניתנת לביטול.')) return;
+          if (!id || !confirm(t('index.deleteLectureConfirm'))) return;
           try {
             const res = await fetch(API_BASE + '/lectures/' + id, { method: 'DELETE' });
             if (!res.ok) {
               const err = await res.json().catch(() => ({}));
-              throw new Error(err.detail || 'מחיקה נכשלה');
+              throw new Error(err.detail || t('index.deleteFailed'));
             }
             await loadLectures();
           } catch (err) {
-            alert(err.message || 'אירעה שגיאה במחיקה');
+            alert(err.message || t('index.deleteError'));
           }
         });
       });
@@ -367,13 +384,13 @@
         renderLectures(lectures);
       } catch (e) {
         console.error('Failed to load lectures', e);
-        document.getElementById('lectures-list').innerHTML = '<p class="text-red-500 p-4">שגיאה בטעינת ההרצאות</p>';
+        document.getElementById('lectures-list').innerHTML = '<p class="text-red-500 p-4">' + t('index.loadLecturesError') + '</p>';
       }
     }
 
     document.getElementById('file-upload').addEventListener('change', (e) => {
       const file = e.target.files[0];
-      document.getElementById('file-label').textContent = file ? file.name : 'לחץ לבחירת קובץ';
+      document.getElementById('file-label').textContent = file ? file.name : t('index.fileSelect');
       document.getElementById('upload-btn').disabled = !file || !document.getElementById('lecture-title').value.trim();
     });
 
@@ -391,9 +408,8 @@
       if (!title || !file) return;
 
       const btn = document.getElementById('upload-btn');
-      const btnText = document.getElementById('btn-text');
       btn.disabled = true;
-      btnText.innerHTML = '<svg class="w-5 h-5 animate-spin inline-block ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> מעלה...';
+      setUploadButtonLabel(true);
 
       try {
         const formData = new FormData();
@@ -404,7 +420,7 @@
         });
         if (!uploadRes.ok) {
           const err = await uploadRes.json().catch(() => ({}));
-          throw new Error(err.detail || 'העלאה נכשלה');
+          throw new Error(err.detail || t('index.uploadFailed'));
         }
         const { filename } = await uploadRes.json();
 
@@ -413,23 +429,30 @@
         });
         if (!processRes.ok) {
           const err = await processRes.json().catch(() => ({}));
-          throw new Error(err.detail || 'התחלת עיבוד נכשלה');
+          throw new Error(err.detail || t('index.startProcessingFailed'));
         }
 
         titleInput.value = '';
         fileInput.value = '';
-        document.getElementById('file-label').textContent = 'לחץ לבחירת קובץ';
+        document.getElementById('file-label').textContent = t('index.fileSelect');
         await loadLectures();
       } catch (e) {
-        alert(e.message || 'אירעה שגיאה');
+        alert(e.message || t('index.genericError'));
       } finally {
         btn.disabled = false;
-        btnText.innerHTML = '<svg class="w-5 h-5 inline-block ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg> התחל עיבוד';
+        setUploadButtonLabel(false);
       }
     });
 
-    loadLectures();
-    setInterval(loadLectures, 5000);
+    (async function initPage() {
+      const i18n = await window.AppI18n.init();
+      t = i18n.t;
+      i18n.applyTranslations();
+      document.title = t('index.pageTitle');
+      setUploadButtonLabel(false);
+      await loadLectures();
+      setInterval(loadLectures, 5000);
+    })();
   </script>
 </body>
 </html>
