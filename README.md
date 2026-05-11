@@ -1,22 +1,42 @@
 # Accessible Academic 🎓
-**Making academic lectures accessible through AI-driven summarization and enhancement.**
+**Empowering students through AI-driven lecture accessibility and smart learning.**
 
-## 🚀 Overview
-Accessible Academic is a platform designed to help students maximize their learning from recorded lectures. Our system boosts low audio, transcribes Hebrew speech, refines it using LLMs, and generates concise study materials.
+Accessible Academic is a cutting-edge platform designed to transform standard academic recordings into high-quality, accessible, and interactive study materials. By combining specialized audio processing with advanced Large Language Models (LLMs), we bridge the accessibility gap for hearing-impaired students and enhance learning efficiency for the entire student body.
 
-## 🛠️ Tech Stack
-- **Backend:** FastAPI, SQLModel (SQLite).
-- **AI Services:** AssemblyAI (STT), OpenAI GPT-4o (Refinement & Summarization).
-- **Processing:** FFmpeg for audio normalization.
+## 🚀 Key Features
 
-## 📂 Project Structure & Documentation
-For the evaluators, please find our official documents here:
-- [Executive Summary (Business Plan)](./documentation/business/Executive_Summary.pdf)
-- [MVP & High-Level Design](./documentation/submissions/MVP_HLD.pdf)
-- [Pitch Presentation](./documentation/Presentation.pdf)
+* **Smart Audio Enhancement:** Automatically detects and boosts low-volume recordings using FFmpeg (3x gain) to ensure clarity before transcription.
+* **High-Accuracy Hebrew Transcription:** Leverages **AssemblyAI** for precise speech-to-text with word-level timestamps.
+* **AI Transcript Refinement:** A unique post-processing step using **GPT-4o** to fix punctuation, remove filler words, and ensure an academic-grade reading experience.
+* [cite_start]**Automated Study Suite:** Generates structured topics, deep-dive summaries, and interactive flashcards directly from the lecture content [cite: 467-469, 476-477].
+* **Panopto Automation:** Full integration via Webhooks, including automatic VTT caption upload back to the institutional server.
+* **Professional PDF Export:** Clean, RTL-supported PDF summaries designed for Israeli students.
 
-## 🏗️ Core Features
-1. **Audio Boosting:** Automatically amplifies quiet recordings by 3x.
-2. **Transcript Refinement:** Cleans raw transcripts, adding punctuation and removing filler words.
-3. **Smart Study Materials:** Generates topics, expanded summaries, and interactive flashcards.
-4. **RTL PDF Export:** Professional Hebrew summaries ready for print.
+## 🧠 The "Why" - Our Mission
+This project was inspired by the personal journey of our co-founder, **Adi Tapiro**, a hearing-impaired Computer Science student. Faced with the daily challenge of following recordings without accurate captions, we set out to build a solution that ensures true academic inclusion for everyone.
+
+## 🛠️ Technology Stack
+
+* **Backend:** Python with **FastAPI** (Asynchronous processing).
+* **Database:** **SQLModel** with SQLite for efficient data persistence.
+* **Audio Engine:** **FFmpeg** for media manipulation and normalization.
+* **AI Engines:**
+    * **AssemblyAI:** Specialized Hebrew Speech-to-Text.
+    * **OpenAI GPT-4o:** Advanced NLP for transcript refinement and summarization.
+* **Frontend:** Modern HTML5/JS interface designed for standalone use or iFrame integration.
+
+## 📂 Project Documentation
+
+Our project documentation is organized into specialized modules to support the external evaluation process:
+
+* **[Business Strategy & Executive Summary](./documentation/business/):** The social mission, market research, and core business model (6-page depth).
+* **[Ideation & Concept](./documentation/submissions/ideation/):** The initial research and selection process of our core ideas.
+* **[MVP Scope & Roadmap](./documentation/technical/mvp/):** Strategic development plan and milestone tracking.
+* **[Technical HLD](./documentation/technical/hld/):** Deep dive into the system architecture, data models, and AI pipeline.
+
+## 👥 The Team
+
+We are Computer Science students at **The Academic College of Tel Aviv-Yaffo (MTA)**.
+
+---
+*Developed as part of the Software Entrepreneurship Workshop 2025.*
