@@ -9,7 +9,9 @@ database.db
 
 # Generated project assets
 recordings/
+exports/
 export_*.pdf
+export_*.srt
 export_*.vtt
 
 # Python

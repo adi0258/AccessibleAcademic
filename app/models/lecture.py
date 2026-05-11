@@ -12,6 +12,7 @@ class Lecture(SQLModel, table=True):
     words_json: str = "[]"
     processed_content_json: str = "{}"
     assemblyai_transcript_id: Optional[str] = None
-    # boosting_audio, uploading, transcribing, refining_transcript, generating_study_material, completed
+    # boosting_audio, uploading, transcribing, refining_transcript,
+    # generating_study_material, completed
     processing_stage: Optional[str] = None
     progress_percent: Optional[int] = None

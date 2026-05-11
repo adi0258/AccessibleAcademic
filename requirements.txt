@@ -7,3 +7,4 @@ python-dotenv
 python-bidi
 requests
 python-multipart
+python-docx

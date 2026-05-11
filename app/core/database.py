@@ -1,23 +1,28 @@
+from collections.abc import Generator
+
+from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine
 
+from app.core.config import DATABASE_URL
+from app.models import Lecture
 
-sqlite_url = "sqlite:///./database.db"
-engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 
-def get_session():
+def get_session() -> Generator[Session, None, None]:
     with Session(engine) as session:
         yield session
 
 
-def create_db_and_tables():
+def create_db_and_tables() -> None:
+    # Import keeps SQLModel metadata registered before create_all runs.
+    _ = Lecture
     SQLModel.metadata.create_all(engine)
-    # Add progress columns if they don't exist (for existing DBs)
-    from sqlalchemy import text
 
     with engine.connect() as conn:
-        r = conn.execute(text("PRAGMA table_info(lecture)"))
-        cols = {row[1] for row in r}
+        result = conn.execute(text("PRAGMA table_info(lecture)"))
+        cols = {row[1] for row in result}
         for col, spec in [
             ("assemblyai_transcript_id", "TEXT"),
             ("processing_stage", "TEXT"),

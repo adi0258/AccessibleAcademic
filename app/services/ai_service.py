@@ -22,7 +22,7 @@ def _require_env(name: str) -> str:
     return value
 
 
-def _assembly_headers():
+def _assembly_headers() -> dict[str, str]:
     return {"authorization": _require_env("ASSEMBLY_API_KEY")}
 
 
@@ -49,8 +49,8 @@ def transcribe_audio(filename: str, lecture_id: Optional[int] = None, progress_c
     headers = _assembly_headers()
 
     def read_file(fn):
-        with open(fn, "rb") as _f:
-            while chunk := _f.read(5242880):
+        with open(fn, "rb") as file_obj:
+            while chunk := file_obj.read(5242880):
                 yield chunk
 
     if lecture_id is not None and progress_cb:
@@ -97,7 +97,7 @@ def transcribe_audio(filename: str, lecture_id: Optional[int] = None, progress_c
         if status == "completed":
             return {"text": res["text"], "words": res.get("words", [])}
         if status == "error":
-            raise Exception(res.get("error", "Transcription failed"))
+            raise RuntimeError(res.get("error", "Transcription failed"))
         time.sleep(3)
 
 

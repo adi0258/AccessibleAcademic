@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 from bidi.algorithm import get_display
 from fastapi import HTTPException
@@ -7,32 +8,87 @@ from fastapi.responses import FileResponse
 from fpdf import FPDF
 from sqlmodel import Session
 
-from models.lecture import Lecture
+from app.core.config import EXPORTS_DIR, FONT_FILE
+from app.models import Lecture
 
 
-def export_lecture_pdf(lecture_id: int, session: Session, base_dir: str):
+PDF_FONT_NAME = "AccessibleAcademicUnicode"
+
+
+def _load_processed_content(lecture: Lecture) -> dict:
+    try:
+        return json.loads(lecture.processed_content_json)
+    except Exception:
+        return {"topics": [], "summaries": [], "flashcards": []}
+
+
+def _safe_title(value: str, fallback: str) -> str:
+    safe_title = "".join(c for c in value if c not in r"\/:*?\"<>|").strip() or fallback
+    return safe_title.replace("\n", " ").replace("\r", " ")[:200]
+
+
+def _candidate_font_paths() -> list[Path]:
+    candidates: list[Path] = []
+
+    env_font = os.getenv("PDF_FONT_PATH")
+    if env_font:
+        candidates.append(Path(env_font))
+
+    candidates.extend(
+        [
+            FONT_FILE,
+            Path(r"C:\Windows\Fonts\segoeui.ttf"),
+            Path(r"C:\Windows\Fonts\arial.ttf"),
+            Path(r"C:\Windows\Fonts\calibri.ttf"),
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+            Path("/usr/share/fonts/truetype/noto/NotoSansHebrew-Regular.ttf"),
+            Path("/Library/Fonts/Arial.ttf"),
+            Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
+        ]
+    )
+
+    unique_candidates: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        candidate_str = str(candidate)
+        if candidate_str in seen:
+            continue
+        seen.add(candidate_str)
+        if candidate.exists():
+            unique_candidates.append(candidate)
+    return unique_candidates
+
+
+def _load_unicode_font(pdf: FPDF) -> str:
+    for font_path in _candidate_font_paths():
+        try:
+            pdf.add_font(PDF_FONT_NAME, "", str(font_path), uni=True)
+            return PDF_FONT_NAME
+        except Exception:
+            continue
+
+    raise HTTPException(
+        status_code=500,
+        detail=(
+            "PDF export requires a Unicode TTF font. Add one under assets/fonts/, "
+            "or set PDF_FONT_PATH to a Hebrew-capable .ttf file."
+        ),
+    )
+
+
+def export_lecture_pdf(lecture_id: int, session: Session):
     lecture = session.get(Lecture, lecture_id)
     if not lecture or lecture.status != "completed":
         raise HTTPException(status_code=404, detail="Lecture not ready")
 
-    try:
-        data = json.loads(lecture.processed_content_json)
-    except Exception:
-        data = {"topics": [], "summaries": [], "flashcards": []}
+    data = _load_processed_content(lecture)
 
     pdf = FPDF()
     pdf.set_margins(20, 20, 20)
     pdf.add_page()
     usable_width = pdf.w - pdf.l_margin - pdf.r_margin
 
-    font_name = "Arial"
-    font_path = os.path.join(base_dir, "Heebo-VariableFont_wght.ttf")
-    if os.path.exists(font_path):
-        try:
-            pdf.add_font("Heebo", "", font_path, uni=True)
-            font_name = "Heebo"
-        except Exception:
-            pass
+    font_name = _load_unicode_font(pdf)
 
     def write_rtl_multiline(text, font_size):
         pdf.set_font(font_name, "", font_size)
@@ -81,10 +137,9 @@ def export_lecture_pdf(lecture_id: int, session: Session, base_dir: str):
             write_rtl_multiline(f"תשובה: {card.get('answer')}", 12)
             pdf.ln(6)
 
-    safe_title = "".join(c for c in lecture.title if c not in r"\/:*?\"<>|").strip() or f"lecture-{lecture_id}"
-    safe_title = safe_title.replace("\n", " ").replace("\r", " ")[:200]
+    safe_title = _safe_title(lecture.title, f"lecture-{lecture_id}")
     download_filename = f"summery-{safe_title}.pdf"
 
-    export_path = os.path.join(base_dir, f"export_{lecture_id}.pdf")
-    pdf.output(export_path)
+    export_path = EXPORTS_DIR / f"export_{lecture_id}.pdf"
+    pdf.output(str(export_path))
     return FileResponse(export_path, filename=download_filename)

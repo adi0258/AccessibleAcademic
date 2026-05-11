@@ -1,12 +1,12 @@
 import json
-import os
 import re
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from sqlmodel import Session
 
-from models.lecture import Lecture
+from app.core.config import EXPORTS_DIR
+from app.models import Lecture
 
 
 MAX_WORDS_PER_SEGMENT = 15
@@ -57,7 +57,7 @@ def _build_segments(words):
     return segments
 
 
-def export_lecture_srt(lecture_id: int, session: Session, base_dir: str):
+def export_lecture_srt(lecture_id: int, session: Session):
     lecture = session.get(Lecture, lecture_id)
     if not lecture or lecture.status != "completed":
         raise HTTPException(status_code=404, detail="Lecture not ready")
@@ -81,14 +81,14 @@ def export_lecture_srt(lecture_id: int, session: Session, base_dir: str):
     safe_title = "".join(c for c in lecture.title if c not in r"\/:*?\"<>|").strip() or f"lecture-{lecture_id}"
     safe_title = safe_title.replace("\n", " ").replace("\r", " ")[:200]
     download_filename = f"subtitles-{safe_title}.srt"
-    export_path = os.path.join(base_dir, f"export_{lecture_id}.srt")
-    with open(export_path, "w", encoding="utf-8") as f:
-        f.write(srt_content)
+    export_path = EXPORTS_DIR / f"export_{lecture_id}.srt"
+    with open(export_path, "w", encoding="utf-8") as file_obj:
+        file_obj.write(srt_content)
 
     return FileResponse(export_path, filename=download_filename, media_type="application/x-subrip")
 
 
-def export_lecture_vtt(lecture_id: int, session: Session, base_dir: str):
+def export_lecture_vtt(lecture_id: int, session: Session):
     lecture = session.get(Lecture, lecture_id)
     if not lecture or lecture.status != "completed":
         raise HTTPException(status_code=404, detail="Lecture not ready")
@@ -111,8 +111,8 @@ def export_lecture_vtt(lecture_id: int, session: Session, base_dir: str):
     safe_title = "".join(c for c in lecture.title if c not in r"\/:*?\"<>|").strip() or f"lecture-{lecture_id}"
     safe_title = safe_title.replace("\n", " ").replace("\r", " ")[:200]
     download_filename = f"subtitles-{safe_title}.vtt"
-    export_path = os.path.join(base_dir, f"export_{lecture_id}.vtt")
-    with open(export_path, "w", encoding="utf-8") as f:
-        f.write(vtt_content)
+    export_path = EXPORTS_DIR / f"export_{lecture_id}.vtt"
+    with open(export_path, "w", encoding="utf-8") as file_obj:
+        file_obj.write(vtt_content)
 
     return FileResponse(export_path, filename=download_filename, media_type="text/vtt")

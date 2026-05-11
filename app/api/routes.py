@@ -1,32 +1,36 @@
-import os
+from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlmodel import Session, select
 
-from core.database import get_session
-from models.lecture import Lecture
-from services.pdf_service import export_lecture_pdf
-from services.pipeline_service import run_full_pipeline
-from services.subtitle_service import export_lecture_srt, export_lecture_vtt
+from app.core.config import RECORDINGS_DIR
+from app.core.database import get_session
+from app.models import Lecture
+from app.services.pdf_service import export_lecture_pdf
+from app.services.pipeline_service import run_full_pipeline
+from app.services.subtitle_service import export_lecture_srt, export_lecture_vtt
+from app.services.word_service import export_lecture_docx
 
 
 router = APIRouter()
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 @router.post("/upload")
 def upload_audio(file: UploadFile = File(...)):
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename")
-    safe_name = os.path.basename(file.filename)
-    file_path = os.path.join(BASE_DIR, "recordings", safe_name)
+
+    safe_name = Path(file.filename).name
+    file_path = RECORDINGS_DIR / safe_name
+
     try:
         contents = file.file.read()
-        with open(file_path, "wb") as f:
-            f.write(contents)
+        with open(file_path, "wb") as file_obj:
+            file_obj.write(contents)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
     return {"filename": safe_name}
 
 
@@ -37,8 +41,8 @@ def process_lecture(
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
 ):
-    file_path = os.path.join(BASE_DIR, "recordings", filename)
-    if not os.path.exists(file_path):
+    file_path = RECORDINGS_DIR / filename
+    if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
 
     new_lecture = Lecture(
@@ -52,7 +56,7 @@ def process_lecture(
     session.commit()
     session.refresh(new_lecture)
 
-    background_tasks.add_task(run_full_pipeline, new_lecture.id, file_path)
+    background_tasks.add_task(run_full_pipeline, new_lecture.id, str(file_path))
     return {"message": "Started", "lecture_id": new_lecture.id}
 
 
@@ -81,20 +85,25 @@ def delete_lecture(lecture_id: int, session: Session = Depends(get_session)):
 
 @router.get("/lectures/{lecture_id}/export")
 def export_lecture(lecture_id: int, session: Session = Depends(get_session)):
-    return export_lecture_pdf(lecture_id, session, BASE_DIR)
+    return export_lecture_pdf(lecture_id, session)
+
+
+@router.get("/lectures/{lecture_id}/export-docx")
+def export_lecture_docx_file(lecture_id: int, session: Session = Depends(get_session)):
+    return export_lecture_docx(lecture_id, session)
 
 
 @router.get("/lectures/{lecture_id}/export-srt")
 def export_lecture_subtitles(lecture_id: int, session: Session = Depends(get_session)):
-    return export_lecture_srt(lecture_id, session, BASE_DIR)
+    return export_lecture_srt(lecture_id, session)
 
 
 @router.get("/lectures/{lecture_id}/export-vtt")
 def export_lecture_subtitles_vtt(lecture_id: int, session: Session = Depends(get_session)):
-    return export_lecture_vtt(lecture_id, session, BASE_DIR)
+    return export_lecture_vtt(lecture_id, session)
 
 
 @router.get("/lectures/{lecture_id}/export-vvt")
 def export_lecture_subtitles_vvt_alias(lecture_id: int, session: Session = Depends(get_session)):
     # Backward-compatible alias for common typo ("vvt" instead of "vtt")
-    return export_lecture_vtt(lecture_id, session, BASE_DIR)
+    return export_lecture_vtt(lecture_id, session)

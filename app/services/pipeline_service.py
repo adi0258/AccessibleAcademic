@@ -4,10 +4,10 @@ from typing import Optional
 
 from sqlmodel import Session
 
-from core.database import engine
-from models.lecture import Lecture
-from services.ai_service import generate_study_material, transcribe_audio
-from services.audio_service import boost_audio
+from app.core.database import engine
+from app.models import Lecture
+from app.services.ai_service import generate_study_material, transcribe_audio
+from app.services.audio_service import boost_audio
 
 
 def _update_lecture_progress(
@@ -39,10 +39,10 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
         boosted_path = boost_audio(audio_filename)
 
         with Session(engine) as session_boosted:
-            lec = session_boosted.get(Lecture, lecture_id)
-            if lec:
-                lec.filename = os.path.basename(boosted_path)
-                session_boosted.add(lec)
+            lecture = session_boosted.get(Lecture, lecture_id)
+            if lecture:
+                lecture.filename = os.path.basename(boosted_path)
+                session_boosted.add(lecture)
                 session_boosted.commit()
 
         result = transcribe_audio(boosted_path, lecture_id=lecture_id, progress_cb=_update_lecture_progress)
@@ -50,31 +50,32 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
         _update_lecture_progress(lecture_id, "transcription_completed", 75)
         transcript_text = result["text"]
 
-        with Session(engine) as session2:
-            lec = session2.get(Lecture, lecture_id)
-            if lec:
-                lec.transcript = transcript_text
-                lec.words_json = json.dumps(result.get("words", []))
-                session2.add(lec)
-                session2.commit()
+        with Session(engine) as session_transcript:
+            lecture = session_transcript.get(Lecture, lecture_id)
+            if lecture:
+                lecture.transcript = transcript_text
+                lecture.words_json = json.dumps(result.get("words", []))
+                session_transcript.add(lecture)
+                session_transcript.commit()
 
         _update_lecture_progress(lecture_id, "generating_study_material", 90)
         processed = generate_study_material(transcript_text)
-        with Session(engine) as session3:
-            lec = session3.get(Lecture, lecture_id)
-            if lec:
-                lec.processed_content_json = processed
-                lec.status = "completed"
-                lec.processing_stage = "completed"
-                lec.progress_percent = 100
-                session3.add(lec)
-                session3.commit()
+
+        with Session(engine) as session_processed:
+            lecture = session_processed.get(Lecture, lecture_id)
+            if lecture:
+                lecture.processed_content_json = processed
+                lecture.status = "completed"
+                lecture.processing_stage = "completed"
+                lecture.progress_percent = 100
+                session_processed.add(lecture)
+                session_processed.commit()
     except Exception as e:
         print(f"Pipeline Error: {str(e)}")
-        with Session(engine) as session_err:
-            lec = session_err.get(Lecture, lecture_id)
-            if lec:
-                lec.status = f"error: {str(e)}"
-                lec.processing_stage = "error"
-                session_err.add(lec)
-                session_err.commit()
+        with Session(engine) as session_error:
+            lecture = session_error.get(Lecture, lecture_id)
+            if lecture:
+                lecture.status = f"error: {str(e)}"
+                lecture.processing_stage = "error"
+                session_error.add(lecture)
+                session_error.commit()
