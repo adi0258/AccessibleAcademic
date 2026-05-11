@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     (function () {
-      const locale = (navigator.language || "en").toLowerCase().startsWith("he") ? "he" : "en";
+      const locale = (navigator.language || navigator.userLanguage || "he").toLowerCase().startsWith("he") ? "he" : "en";
       document.documentElement.lang = locale;
       document.documentElement.dir = locale === "he" ? "rtl" : "ltr";
     })();

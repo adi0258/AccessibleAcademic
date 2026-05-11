@@ -9,8 +9,23 @@
   };
 
   function detectLocale() {
-    const language = (global.navigator.language || global.navigator.userLanguage || "en").toLowerCase();
-    return language.startsWith("he") ? "he" : "en";
+    const candidates = [];
+    if (global.navigator) {
+      if (Array.isArray(global.navigator.languages)) {
+        candidates.push.apply(candidates, global.navigator.languages);
+      }
+      candidates.push(global.navigator.language, global.navigator.userLanguage);
+    }
+
+    const normalizedCandidates = candidates
+      .filter(function (value) { return typeof value === "string" && value.trim(); })
+      .map(function (value) { return value.toLowerCase(); });
+
+    if (!normalizedCandidates.length) {
+      return "he";
+    }
+
+    return normalizedCandidates.some(function (value) { return value.startsWith("he"); }) ? "he" : "en";
   }
 
   function getNestedValue(obj, path) {
