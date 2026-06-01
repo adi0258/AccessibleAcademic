@@ -206,68 +206,77 @@
           document.getElementById('lecture-title').textContent = lecture.title;
           document.getElementById('transcript').textContent = lecture.transcript || t('watch.noTranscript');
 
-          let media = document.getElementById('media');
-          const ext = (lecture.filename || '').split('.').pop() || 'mp4';
-          const mime = MIME_BY_EXT[ext.toLowerCase()] || 'video/mp4';
-          const url = /^https?:\/\//.test(lecture.filename)
-            ? lecture.filename
-            : API_BASE + '/static/' + encodeURIComponent(lecture.filename);
+          const mediaContainer = document.getElementById('media-container');
+          if (!lecture.filename) {
+            // Blob was deleted when a newer lecture was uploaded — show a notice instead of a broken player
+            mediaContainer.innerHTML = '<p class="text-gray-400 text-sm text-center py-6">השמע אינו זמין עוד — קובץ המקור נמחק כדי לפנות מקום.</p>';
+          } else {
+            let media = document.getElementById('media');
+            const ext = (lecture.filename || '').split('.').pop() || 'mp4';
+            const mime = MIME_BY_EXT[ext.toLowerCase()] || 'video/mp4';
+            const url = /^https?:\/\//.test(lecture.filename)
+              ? lecture.filename
+              : API_BASE + '/static/' + encodeURIComponent(lecture.filename);
 
-          const isAudio = mime.startsWith('audio/');
-          if (isAudio) {
-            const audio = document.createElement('audio');
-            audio.id = 'media';
-            audio.className = 'w-full';
-            audio.controls = true;
-            audio.crossOrigin = 'anonymous';
-            media.parentNode.replaceChild(audio, media);
-            media = audio;
-            // Collapse the black video container to just fit the audio bar
-            document.getElementById('media-container').classList.remove('bg-black', 'rounded-xl', 'shadow-lg');
-            document.getElementById('media-container').classList.add('bg-gray-100', 'rounded-xl', 'shadow');
-            document.getElementById('subtitle-overlay').classList.add('hidden');
+            const isAudio = mime.startsWith('audio/');
+            if (isAudio) {
+              const audio = document.createElement('audio');
+              audio.id = 'media';
+              audio.className = 'w-full';
+              audio.controls = true;
+              audio.crossOrigin = 'anonymous';
+              media.parentNode.replaceChild(audio, media);
+              media = audio;
+              mediaContainer.classList.remove('bg-black', 'rounded-xl', 'shadow-lg');
+              mediaContainer.classList.add('bg-gray-100', 'rounded-xl', 'shadow');
+              document.getElementById('subtitle-overlay').classList.add('hidden');
+            }
+
+            media.innerHTML = '<source src="' + url + '" type="' + mime + '">';
+            media.load();
           }
 
-          media.innerHTML = '<source src="' + url + '" type="' + mime + '">';
-          media.load();
-
+          const media = lecture.filename ? document.getElementById('media') : null;
           let segments = [];
           try {
             const words = typeof lecture.words_json === 'string' ? JSON.parse(lecture.words_json || '[]') : (lecture.words_json || []);
             segments = buildSegments(words);
           } catch (_) {}
-          attachNativeSubtitleTrack(media, segments);
-          syncSubtitleDisplayMode(media);
+          if (media) {
+            attachNativeSubtitleTrack(media, segments);
+            syncSubtitleDisplayMode(media);
+          }
 
-          const captionsToggle = document.getElementById('captions-toggle');
-          if (captionsToggle) {
-            captionsToggle.addEventListener('click', function () {
-              captionsVisible = !captionsVisible;
+          if (media) {
+            const captionsToggle = document.getElementById('captions-toggle');
+            if (captionsToggle) {
+              captionsToggle.addEventListener('click', function () {
+                captionsVisible = !captionsVisible;
+                syncCaptionsToCurrentTime(media, segments);
+                syncSubtitleDisplayMode(media);
+              });
+            }
+
+            document.addEventListener('fullscreenchange', function () {
+              syncSubtitleDisplayMode(media);
+            });
+            document.addEventListener('webkitfullscreenchange', function () {
+              syncSubtitleDisplayMode(media);
+            });
+            media.addEventListener('loadedmetadata', function () {
               syncCaptionsToCurrentTime(media, segments);
               syncSubtitleDisplayMode(media);
             });
+            media.addEventListener('timeupdate', function () {
+              syncCaptionsToCurrentTime(media, segments);
+            });
+            media.addEventListener('seeked', function () {
+              syncCaptionsToCurrentTime(media, segments);
+            });
+            media.addEventListener('error', function () {
+              document.getElementById('subtitle-text').textContent = t('watch.mediaLoadError');
+            });
           }
-
-          document.addEventListener('fullscreenchange', function () {
-            syncSubtitleDisplayMode(media);
-          });
-          document.addEventListener('webkitfullscreenchange', function () {
-            syncSubtitleDisplayMode(media);
-          });
-          media.addEventListener('loadedmetadata', function () {
-            syncCaptionsToCurrentTime(media, segments);
-            syncSubtitleDisplayMode(media);
-          });
-
-          media.addEventListener('timeupdate', function () {
-            syncCaptionsToCurrentTime(media, segments);
-          });
-          media.addEventListener('seeked', function () {
-            syncCaptionsToCurrentTime(media, segments);
-          });
-          media.addEventListener('error', function () {
-            document.getElementById('subtitle-text').textContent = t('watch.mediaLoadError');
-          });
         })
         .catch((e) => {
           document.getElementById('loading').classList.add('hidden');

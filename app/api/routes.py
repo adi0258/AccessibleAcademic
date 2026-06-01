@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 from app.core.config import RECORDINGS_DIR
 from app.core.database import get_session
 from app.models import Lecture
-from app.services.blob_service import generate_client_upload_token
+from app.services.blob_service import delete_blob, generate_client_upload_token
 from app.services.pdf_service import export_lecture_pdf
 from app.services.pipeline_service import run_full_pipeline
 from app.services.subtitle_service import export_lecture_srt, export_lecture_vtt
@@ -61,6 +61,15 @@ def process_lecture(
     else:
         raise HTTPException(status_code=400, detail="Either filename or blob_url required")
 
+    # Free Vercel Blob quota: delete every existing lecture's blob before storing the new one
+    existing_lectures = session.exec(select(Lecture)).all()
+    for old in existing_lectures:
+        if old.filename and old.filename.startswith("http"):
+            delete_blob(old.filename)
+            old.filename = ""
+            session.add(old)
+    session.commit()
+
     new_lecture = Lecture(
         title=title,
         filename=blob_url or filename,
@@ -94,6 +103,9 @@ def delete_lecture(lecture_id: int, session: Session = Depends(get_session)):
     lecture = session.get(Lecture, lecture_id)
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
+    # Clean up blob storage if the filename is a remote URL
+    if lecture.filename and lecture.filename.startswith("http"):
+        delete_blob(lecture.filename)
     session.delete(lecture)
     session.commit()
     return {"message": "Deleted"}
