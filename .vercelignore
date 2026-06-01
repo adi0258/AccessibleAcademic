@@ -1,0 +1,22 @@
+# Local runtime data — never deploy these
+recordings/
+exports/
+database.db
+*.db
+
+# Local dev artifacts
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Large binary assets not needed at runtime
+Heebo.zip
+Heebo-VariableFont_wght.ttf
+documentation/
+
+# Local PDF exports
+export_*.pdf
+export_*.srt
+export_*.vtt

@@ -2,10 +2,9 @@ fpdf2>=2.8.5
 fastapi
 sqlmodel
 openai
-uvicorn[standard]
+uvicorn
 python-dotenv
 python-bidi
 requests
 python-multipart
 python-docx
-psycopg2-binary

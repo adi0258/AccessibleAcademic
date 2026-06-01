@@ -39,3 +39,4 @@ Thumbs.db
 # Local font assets
 *.ttf
 *.otf
+.vercel
