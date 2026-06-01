@@ -430,19 +430,20 @@
       try {
         let processQuery = '&title=' + encodeURIComponent(title);
 
-        // Try direct Vercel Blob upload (presigned URL, no function size limit)
+        // Try direct R2 upload (presigned URL, no function size limit)
         const tokenRes = await fetch(API_BASE + '/upload-token?filename=' + encodeURIComponent(file.name));
         if (tokenRes.ok) {
-          const { uploadUrl, clientToken } = await tokenRes.json();
-          const blobHeaders = { 'Content-Type': file.type || 'application/octet-stream', 'x-vercel-blob-access': 'public' };
-          if (clientToken) blobHeaders['Authorization'] = `Bearer ${clientToken}`;
-          const blobRes = await fetch(uploadUrl, { method: 'PUT', headers: blobHeaders, body: file });
+          const { uploadUrl, publicUrl } = await tokenRes.json();
+          const blobRes = await fetch(uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            body: file,
+          });
           if (!blobRes.ok) {
             const errText = await blobRes.text().catch(() => '');
             throw new Error(t('index.uploadFailed') + (errText ? ': ' + errText.slice(0, 120) : ''));
           }
-          const { url: blobUrl } = await blobRes.json();
-          processQuery += '&blob_url=' + encodeURIComponent(blobUrl);
+          processQuery += '&blob_url=' + encodeURIComponent(publicUrl);
         } else {
           // Fallback: upload through the server (local dev, no BLOB_READ_WRITE_TOKEN)
           const formData = new FormData();
