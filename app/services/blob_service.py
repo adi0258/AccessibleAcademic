@@ -28,7 +28,7 @@ def generate_client_upload_token(pathname: str) -> dict:
     presigned_url = _r2_client().generate_presigned_url(
         "put_object",
         Params={"Bucket": bucket, "Key": pathname},
-        ExpiresIn=3600,
+        ExpiresIn=86400,  # 24 hours — large lecture uploads can take a while
     )
 
     return {

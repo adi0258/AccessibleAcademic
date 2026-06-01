@@ -27,12 +27,18 @@
     .katex-display { direction: ltr; unicode-bidi: embed; }
     body { font-family: 'Heebo', sans-serif; }
     .perspective-1000 { perspective: 1000px; }
-    .transform-style-3d { transform-style: preserve-3d; }
-    .backface-hidden { backface-visibility: hidden; }
-    .rotate-y-180 { transform: rotateY(180deg); }
-    .flashcard-inner { transition: transform 0.5s; transform-style: preserve-3d; }
+    .flashcard-inner {
+      display: grid;
+      grid-template: 1fr / 1fr;
+      transform-style: preserve-3d;
+      transition: transform 0.5s;
+    }
     .flashcard-inner.flipped { transform: rotateY(180deg); }
-    .flashcard-front, .flashcard-back { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+    .flashcard-front, .flashcard-back {
+      grid-area: 1 / 1;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
     .flashcard-back { transform: rotateY(180deg); }
   </style>
 </head>
@@ -136,10 +142,12 @@
     const API_BASE = '';
     let t = function (key) { return key; };
 
-    function setUploadButtonLabel(isUploading) {
+    function setUploadButtonLabel(isUploading, progress) {
       const btnText = document.getElementById('btn-text');
       if (!btnText) return;
-      const label = isUploading ? t('index.uploading') : t('index.startProcessing');
+      const label = isUploading
+        ? (progress ? t('index.uploading') + ' ' + progress : t('index.uploading'))
+        : t('index.startProcessing');
       btnText.innerHTML = '<svg class="w-5 h-5 inline-block ml-2' + (isUploading ? ' animate-spin' : '') + '" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg> ' + label;
     }
 
@@ -198,18 +206,18 @@
       if (!flashcards || !flashcards.length) return '';
       return flashcards.map((f, i) => {
         const scheme = FLASHCARD_SCHEMES[i % 3];
-        const q = escapeHtml(f.question || '');
-        const a = escapeHtml(f.answer || '');
+        const q = escapeHtml(f.question || '').replace(/\n+/g, ' ');
+        const a = escapeHtml(f.answer || '').replace(/\n+/g, ' ');
         return `
-          <div class="flashcard relative h-32 cursor-pointer perspective-1000" data-flipped="false">
-            <div class="flashcard-inner absolute w-full h-full inset-0">
-              <div class="flashcard-front absolute w-full h-full p-4 rounded-lg border ${scheme.front} flex flex-col items-center justify-center">
-                <p class="font-semibold ${scheme.textFront} text-center">${q}</p>
-                <p class="text-xs text-gray-500 mt-2">${t('index.flashcardShowAnswer')}</p>
+          <div class="flashcard cursor-pointer perspective-1000" data-flipped="false">
+            <div class="flashcard-inner w-full">
+              <div class="flashcard-front p-5 rounded-lg border ${scheme.front} flex flex-col items-center justify-center gap-2">
+                <p dir="auto" class="font-semibold ${scheme.textFront} text-center">${q}</p>
+                <p class="text-xs text-gray-400">${t('index.flashcardShowAnswer')}</p>
               </div>
-              <div class="flashcard-back absolute w-full h-full p-4 rounded-lg border ${scheme.back} flex flex-col items-center justify-center inset-0">
-                <p class="text-sm ${scheme.textBack} text-center font-medium">${a}</p>
-                <p class="text-xs text-gray-500 mt-2">${t('index.flashcardBackToQuestion')}</p>
+              <div class="flashcard-back p-5 rounded-lg border ${scheme.back} flex flex-col items-center justify-center gap-2">
+                <p dir="auto" class="text-sm ${scheme.textBack} text-center font-medium">${a}</p>
+                <p class="text-xs text-gray-400">${t('index.flashcardBackToQuestion')}</p>
               </div>
             </div>
           </div>`;
@@ -434,15 +442,34 @@
         const tokenRes = await fetch(API_BASE + '/upload-token?filename=' + encodeURIComponent(file.name));
         if (tokenRes.ok) {
           const { uploadUrl, publicUrl } = await tokenRes.json();
-          const blobRes = await fetch(uploadUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': file.type || 'application/octet-stream' },
-            body: file,
+
+          // Use XHR for upload progress + reliable large-file handling
+          await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', uploadUrl);
+            xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+            xhr.upload.addEventListener('progress', (e) => {
+              if (e.lengthComputable) {
+                const pct = Math.round((e.loaded / e.total) * 100);
+                setUploadButtonLabel(true, pct < 100 ? `${pct}%` : null);
+              }
+            });
+            xhr.addEventListener('load', () => {
+              if (xhr.status >= 200 && xhr.status < 300) resolve();
+              else reject(new Error(t('index.uploadFailed') + ': ' + xhr.responseText.slice(0, 120)));
+            });
+            xhr.addEventListener('error', () => reject(new Error(t('index.uploadFailed') + ' (network error)')));
+            xhr.addEventListener('abort', () => reject(new Error(t('index.uploadFailed') + ' (aborted)')));
+            xhr.send(file);
           });
-          if (!blobRes.ok) {
-            const errText = await blobRes.text().catch(() => '');
-            throw new Error(t('index.uploadFailed') + (errText ? ': ' + errText.slice(0, 120) : ''));
+
+          // Verify the file actually landed in R2 before telling AssemblyAI to fetch it
+          const headRes = await fetch(publicUrl, { method: 'HEAD' });
+          const uploadedSize = parseInt(headRes.headers.get('content-length') || '0', 10);
+          if (!headRes.ok || uploadedSize < file.size * 0.99) {
+            throw new Error(t('index.uploadFailed') + ': file verification failed');
           }
+
           processQuery += '&blob_url=' + encodeURIComponent(publicUrl);
         } else {
           // Fallback: upload through the server (local dev, no BLOB_READ_WRITE_TOKEN)
