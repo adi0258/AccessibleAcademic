@@ -154,7 +154,7 @@
     function getStatusText(status) {
       if (status === 'completed') return t('index.statusCompleted');
       if (status === 'processing') return t('index.statusProcessing');
-      if (status && status.startsWith('error')) return t('index.statusError');
+      if (status && status.startsWith('error')) return status.slice(7) || t('index.statusError');
       if (status) return status;
       return t('index.statusPending');
     }
