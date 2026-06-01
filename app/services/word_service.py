@@ -11,6 +11,7 @@ from sqlmodel import Session
 
 from app.core.config import EXPORTS_DIR
 from app.models import Lecture
+from app.services.math_utils import latex_to_text
 
 
 def _load_processed_content(lecture: Lecture) -> dict:
@@ -51,6 +52,7 @@ def _set_run_rtl(run) -> None:
 
 
 def _add_rtl_paragraph(document: Document, text: str, *, font_size: int, bold: bool = False) -> None:
+    text = latex_to_text(text)
     paragraph = document.add_paragraph()
     paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     _set_paragraph_rtl(paragraph)

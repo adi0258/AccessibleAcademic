@@ -19,7 +19,11 @@
   </script>
   <script src="/assets/i18n.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
   <style>
+    .katex { font-size: 1em !important; }
     body { font-family: 'Heebo', sans-serif; }
     .perspective-1000 { perspective: 1000px; }
     .transform-style-3d { transform-style: preserve-3d; }
@@ -314,6 +318,15 @@
           ` : ''}
         `;
         listEl.appendChild(card);
+        if (window.renderMathInElement) {
+          renderMathInElement(card, {
+            delimiters: [
+              {left: '$$', right: '$$', display: true},
+              {left: '$',  right: '$',  display: false},
+            ],
+            throwOnError: false,
+          });
+        }
       });
 
       listEl.querySelectorAll('.lecture-toggle').forEach((el) => {

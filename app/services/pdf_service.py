@@ -10,6 +10,7 @@ from sqlmodel import Session
 
 from app.core.config import EXPORTS_DIR, FONT_FILE
 from app.models import Lecture
+from app.services.math_utils import latex_to_text
 
 
 PDF_FONT_NAME = "AccessibleAcademicUnicode"
@@ -91,6 +92,7 @@ def export_lecture_pdf(lecture_id: int, session: Session):
     font_name = _load_unicode_font(pdf)
 
     def write_rtl_multiline(text, font_size):
+        text = latex_to_text(text)
         pdf.set_font(font_name, "", font_size)
         lines = pdf.multi_cell(usable_width, 8, txt=text, align="R", split_only=True)
         for line in lines:
