@@ -114,17 +114,21 @@ def generate_study_material(text: str):
     נתח את תמלול ההרצאה האקדמית הבא בעברית והחזר JSON בלבד.
     הסיכומים חייבים להיות מקצועיים, אקדמיים ומפורטים מאוד.
 
-    כתיבת נוסחאות מתמטיות: השתמש בסימון LaTeX לכל ביטוי מתמטי.
-    - נוסחה בשורה: $...$  לדוגמה: הנגזרת של $f(x) = x^2$ היא $f'(x) = 2x$.
-    - נוסחה בשורה נפרדת: $$...$$ לדוגמה: כלל השרשרת: $$(f \circ g)'(x_0) = g'(f(x_0)) \cdot f'(x_0)$$
-    - כתוב כל מונח מתמטי (פונקציות, נגזרות, אינטגרלים, גבולות, וקטורים וכו') בסימון LaTeX.
+    חוק חובה — סימון LaTeX: כל ביטוי מתמטי ללא יוצא מן הכלל חייב להיכתב בסימון LaTeX.
+    אסור לכתוב מתמטיקה במילים. דוגמאות לסגנון הנדרש:
+    - במקום "הנגזרת של f בנקודה x0" → כתוב: $f'(x_0)$
+    - במקום "f הרכבה עם g" → כתוב: $(f \circ g)(x)$
+    - כלל השרשרת: $(f \circ g)'(x_0) = g'(f(x_0)) \cdot f'(x_0)$
+    - גבול: $\lim_{{x \to x_0}} f(x) = L$
+    - אינטגרל: $\int_a^b f(x)\,dx$
+    - השתמש ב-$...$ לנוסחה בשורה, ו-$$...$$ לנוסחה בשורה נפרדת.
 
     על ה-JSON להכיל:
     1. "topics": רשימה של כותרות הנושאים המרכזיים בקצרה.
     2. "summaries": רשימה של אובייקטים. כל אובייקט מכיל:
        - "topic_name": שם הנושא.
        - "content": סיכום מעמיק ומפורט (לפחות 4-6 משפטים) על הנושא הספציפי מתוך ההרצאה, עם נוסחאות LaTeX.
-    3. "flashcards": רשימה של 5 אובייקטים עם "question" ו-"answer", עם נוסחאות LaTeX כשנדרש.
+    3. "flashcards": רשימה של 5 אובייקטים עם "question" ו-"answer", עם נוסחאות LaTeX לכל ביטוי מתמטי.
 
     התמלול:
     {text}
@@ -138,7 +142,13 @@ def generate_study_material(text: str):
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert academic professor. You write detailed, long, and structured summaries in Hebrew. You ensure each summary is comprehensive.",
+                        "content": (
+                            "You are an expert academic professor who writes detailed, structured summaries in Hebrew. "
+                            "CRITICAL RULE: Every mathematical expression — functions, derivatives, integrals, limits, "
+                            "vectors, matrices, equations, inequalities, Greek letters, exponents, subscripts — MUST be "
+                            "written in LaTeX notation. Use $...$ for inline math and $$...$$ for display math. "
+                            "NEVER write math in plain words or plain text. For example, write $f'(x_0)$ not 'הנגזרת של f בנקודה x0'."
+                        ),
                     },
                     {"role": "user", "content": prompt},
                 ],
