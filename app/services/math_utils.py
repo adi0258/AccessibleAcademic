@@ -90,9 +90,11 @@ def latex_to_text(text: str) -> str:
     # Remove any remaining unknown LaTeX commands
     text = re.sub(r'\\[a-zA-Z]+\b\s*', '', text)
 
-    # Remove $ delimiters (display first, then inline)
+    # Remove math delimiters (all four styles)
     text = re.sub(r'\$\$(.+?)\$\$', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'\\\[(.+?)\\\]', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'\$(.+?)\$', r'\1', text)
+    text = re.sub(r'\\\((.+?)\\\)', r'\1', text)
 
     # Remove stray braces
     text = text.replace('{', '').replace('}', '')
