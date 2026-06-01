@@ -13,7 +13,6 @@ __pycache__/
 
 # Large binary assets not needed at runtime
 Heebo.zip
-Heebo-VariableFont_wght.ttf
 documentation/
 
 # Local PDF exports
