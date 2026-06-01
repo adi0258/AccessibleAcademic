@@ -463,13 +463,6 @@
             xhr.send(file);
           });
 
-          // Verify the file actually landed in R2 before telling AssemblyAI to fetch it
-          const headRes = await fetch(publicUrl, { method: 'HEAD' });
-          const uploadedSize = parseInt(headRes.headers.get('content-length') || '0', 10);
-          if (!headRes.ok || uploadedSize < file.size * 0.99) {
-            throw new Error(t('index.uploadFailed') + ': file verification failed');
-          }
-
           processQuery += '&blob_url=' + encodeURIComponent(publicUrl);
         } else {
           // Fallback: upload through the server (local dev, no BLOB_READ_WRITE_TOKEN)
