@@ -209,7 +209,9 @@
           const media = document.getElementById('media');
           const ext = (lecture.filename || '').split('.').pop() || 'mp4';
           const mime = MIME_BY_EXT[ext.toLowerCase()] || 'video/mp4';
-          const url = API_BASE + '/static/' + encodeURIComponent(lecture.filename);
+          const url = /^https?:\/\//.test(lecture.filename)
+            ? lecture.filename
+            : API_BASE + '/static/' + encodeURIComponent(lecture.filename);
           media.innerHTML = '<source src="' + url + '" type="' + mime + '">';
           media.load();
 
