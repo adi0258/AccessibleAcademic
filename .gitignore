@@ -36,7 +36,8 @@ env/
 .DS_Store
 Thumbs.db
 .claude
-# Local font assets
+# Local font assets (except the bundled Heebo font needed for PDF export)
 *.ttf
 *.otf
+!assets/fonts/Heebo-VariableFont_wght.ttf
 .vercel
