@@ -23,7 +23,8 @@
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
   <style>
-    .katex { font-size: 1em !important; }
+    .katex { font-size: 1em !important; direction: ltr; unicode-bidi: embed; display: inline-block; }
+    .katex-display { direction: ltr; unicode-bidi: embed; }
     body { font-family: 'Heebo', sans-serif; }
     .perspective-1000 { perspective: 1000px; }
     .transform-style-3d { transform-style: preserve-3d; }
