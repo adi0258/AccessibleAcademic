@@ -34,18 +34,27 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
         if not lecture:
             return
 
+    is_url = audio_filename.startswith("http://") or audio_filename.startswith("https://")
+
     try:
-        _update_lecture_progress(lecture_id, "boosting_audio", 5)
-        boosted_path = boost_audio(audio_filename)
+        if is_url:
+            # File is already in Vercel Blob — skip FFmpeg boost and AssemblyAI upload
+            _update_lecture_progress(lecture_id, "transcribing", 10)
+            audio_source = audio_filename
+        else:
+            _update_lecture_progress(lecture_id, "boosting_audio", 5)
+            boosted_path = boost_audio(audio_filename)
 
-        with Session(engine) as session_boosted:
-            lecture = session_boosted.get(Lecture, lecture_id)
-            if lecture:
-                lecture.filename = os.path.basename(boosted_path)
-                session_boosted.add(lecture)
-                session_boosted.commit()
+            with Session(engine) as session_boosted:
+                lecture = session_boosted.get(Lecture, lecture_id)
+                if lecture:
+                    lecture.filename = os.path.basename(boosted_path)
+                    session_boosted.add(lecture)
+                    session_boosted.commit()
 
-        result = transcribe_audio(boosted_path, lecture_id=lecture_id, progress_cb=_update_lecture_progress)
+            audio_source = boosted_path
+
+        result = transcribe_audio(audio_source, lecture_id=lecture_id, progress_cb=_update_lecture_progress)
 
         _update_lecture_progress(lecture_id, "transcription_completed", 75)
         transcript_text = result["text"]

@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 from app.core.config import RECORDINGS_DIR
 from app.core.database import get_session
 from app.models import Lecture
+from app.services.blob_service import generate_client_upload_token
 from app.services.pdf_service import export_lecture_pdf
 from app.services.pipeline_service import run_full_pipeline
 from app.services.subtitle_service import export_lecture_srt, export_lecture_vtt
@@ -34,20 +35,35 @@ def upload_audio(file: UploadFile = File(...)):
     return {"filename": safe_name}
 
 
+@router.get("/upload-token")
+def get_upload_token(filename: str):
+    try:
+        return generate_client_upload_token(filename)
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
 @router.post("/process")
 def process_lecture(
     title: str,
-    filename: str,
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
+    filename: str = "",
+    blob_url: str = "",
 ):
-    file_path = RECORDINGS_DIR / filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
+    if blob_url:
+        audio_source = blob_url
+    elif filename:
+        file_path = RECORDINGS_DIR / filename
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        audio_source = str(file_path)
+    else:
+        raise HTTPException(status_code=400, detail="Either filename or blob_url required")
 
     new_lecture = Lecture(
         title=title,
-        filename=filename,
+        filename=blob_url or filename,
         status="processing",
         processing_stage="pending",
         progress_percent=0,
@@ -56,7 +72,7 @@ def process_lecture(
     session.commit()
     session.refresh(new_lecture)
 
-    background_tasks.add_task(run_full_pipeline, new_lecture.id, str(file_path))
+    background_tasks.add_task(run_full_pipeline, new_lecture.id, audio_source)
     return {"message": "Started", "lecture_id": new_lecture.id}
 
 

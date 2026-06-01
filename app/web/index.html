@@ -407,26 +407,48 @@
       const file = fileInput.files[0];
       if (!title || !file) return;
 
+      const MAX_BYTES = 4 * 1024 * 1024;
+      if (file.size > MAX_BYTES) {
+        alert(`הקובץ גדול מדי (${(file.size / 1024 / 1024).toFixed(1)} MB). גודל מקסימלי: 4 MB.\nיש להעלות קובץ אודיו MP3 קצר בלבד.`);
+        return;
+      }
+
       const btn = document.getElementById('upload-btn');
       btn.disabled = true;
       setUploadButtonLabel(true);
 
       try {
-        const formData = new FormData();
-        formData.append('file', file);
-        const uploadRes = await fetch(API_BASE + '/upload', {
-          method: 'POST',
-          body: formData
-        });
-        if (!uploadRes.ok) {
-          const err = await uploadRes.json().catch(() => ({}));
-          throw new Error(err.detail || t('index.uploadFailed'));
-        }
-        const { filename } = await uploadRes.json();
+        let processQuery = '&title=' + encodeURIComponent(title);
 
-        const processRes = await fetch(API_BASE + '/process?title=' + encodeURIComponent(title) + '&filename=' + encodeURIComponent(filename), {
-          method: 'POST'
-        });
+        // Try direct Vercel Blob upload (no function size limit)
+        const tokenRes = await fetch(API_BASE + '/upload-token?filename=' + encodeURIComponent(file.name));
+        if (tokenRes.ok) {
+          const { clientToken, uploadUrl } = await tokenRes.json();
+          const blobRes = await fetch(uploadUrl, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${clientToken}`,
+              'Content-Type': file.type || 'application/octet-stream',
+            },
+            body: file,
+          });
+          if (!blobRes.ok) throw new Error(t('index.uploadFailed'));
+          const { url: blobUrl } = await blobRes.json();
+          processQuery += '&blob_url=' + encodeURIComponent(blobUrl);
+        } else {
+          // Fallback: upload through the server (local dev, no BLOB_READ_WRITE_TOKEN)
+          const formData = new FormData();
+          formData.append('file', file);
+          const uploadRes = await fetch(API_BASE + '/upload', { method: 'POST', body: formData });
+          if (!uploadRes.ok) {
+            const err = await uploadRes.json().catch(() => ({}));
+            throw new Error(err.detail || t('index.uploadFailed'));
+          }
+          const { filename } = await uploadRes.json();
+          processQuery += '&filename=' + encodeURIComponent(filename);
+        }
+
+        const processRes = await fetch(API_BASE + '/process?' + processQuery, { method: 'POST' });
         if (!processRes.ok) {
           const err = await processRes.json().catch(() => ({}));
           throw new Error(err.detail || t('index.startProcessingFailed'));

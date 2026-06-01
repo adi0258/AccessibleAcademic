@@ -45,27 +45,33 @@ def _response_json(response: requests.Response, step: str) -> dict:
 
 
 def transcribe_audio(filename: str, lecture_id: Optional[int] = None, progress_cb=None):
-    """Upload audio to AssemblyAI, submit transcript job, poll until done."""
+    """
+    Transcribe audio from a local file path or a remote URL.
+    If filename is a URL it is passed directly to AssemblyAI, skipping the upload step.
+    """
     headers = _assembly_headers()
 
-    def read_file(fn):
-        with open(fn, "rb") as file_obj:
-            while chunk := file_obj.read(5242880):
-                yield chunk
+    if filename.startswith("http://") or filename.startswith("https://"):
+        audio_url = filename
+    else:
+        def read_file(fn):
+            with open(fn, "rb") as file_obj:
+                while chunk := file_obj.read(5242880):
+                    yield chunk
 
-    if lecture_id is not None and progress_cb:
-        progress_cb(lecture_id, "uploading", 5)
+        if lecture_id is not None and progress_cb:
+            progress_cb(lecture_id, "uploading", 5)
 
-    up_res = requests.post(
-        "https://api.assemblyai.com/v2/upload",
-        headers=headers,
-        data=read_file(filename),
-        timeout=120,
-    )
-    upload_payload = _response_json(up_res, "upload")
-    audio_url = upload_payload.get("upload_url")
-    if not audio_url:
-        raise RuntimeError(f"AssemblyAI upload response missing upload_url: {upload_payload}")
+        up_res = requests.post(
+            "https://api.assemblyai.com/v2/upload",
+            headers=headers,
+            data=read_file(filename),
+            timeout=120,
+        )
+        upload_payload = _response_json(up_res, "upload")
+        audio_url = upload_payload.get("upload_url")
+        if not audio_url:
+            raise RuntimeError(f"AssemblyAI upload response missing upload_url: {upload_payload}")
 
     tx_res = requests.post(
         "https://api.assemblyai.com/v2/transcript",
