@@ -8,3 +8,4 @@ python-bidi
 requests
 python-multipart
 python-docx
+psycopg2-binary

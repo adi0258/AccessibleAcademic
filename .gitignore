@@ -35,7 +35,7 @@ env/
 # OS files
 .DS_Store
 Thumbs.db
-
+.claude
 # Local font assets
 *.ttf
 *.otf
