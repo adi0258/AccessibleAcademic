@@ -407,12 +407,6 @@
       const file = fileInput.files[0];
       if (!title || !file) return;
 
-      const MAX_BYTES = 4 * 1024 * 1024;
-      if (file.size > MAX_BYTES) {
-        alert(`הקובץ גדול מדי (${(file.size / 1024 / 1024).toFixed(1)} MB). גודל מקסימלי: 4 MB.\nיש להעלות קובץ אודיו MP3 קצר בלבד.`);
-        return;
-      }
-
       const btn = document.getElementById('upload-btn');
       btn.disabled = true;
       setUploadButtonLabel(true);
@@ -420,19 +414,17 @@
       try {
         let processQuery = '&title=' + encodeURIComponent(title);
 
-        // Try direct Vercel Blob upload (no function size limit)
+        // Try direct Vercel Blob upload (presigned URL, no function size limit)
         const tokenRes = await fetch(API_BASE + '/upload-token?filename=' + encodeURIComponent(file.name));
         if (tokenRes.ok) {
-          const { clientToken, uploadUrl } = await tokenRes.json();
-          const blobRes = await fetch(uploadUrl, {
-            method: 'PUT',
-            headers: {
-              'Authorization': `Bearer ${clientToken}`,
-              'Content-Type': file.type || 'application/octet-stream',
-            },
-            body: file,
-          });
-          if (!blobRes.ok) throw new Error(t('index.uploadFailed'));
+          const { uploadUrl, clientToken } = await tokenRes.json();
+          const blobHeaders = { 'Content-Type': file.type || 'application/octet-stream', 'x-vercel-blob-access': 'public' };
+          if (clientToken) blobHeaders['Authorization'] = `Bearer ${clientToken}`;
+          const blobRes = await fetch(uploadUrl, { method: 'PUT', headers: blobHeaders, body: file });
+          if (!blobRes.ok) {
+            const errText = await blobRes.text().catch(() => '');
+            throw new Error(t('index.uploadFailed') + (errText ? ': ' + errText.slice(0, 120) : ''));
+          }
           const { url: blobUrl } = await blobRes.json();
           processQuery += '&blob_url=' + encodeURIComponent(blobUrl);
         } else {
