@@ -18,6 +18,7 @@ def download_youtube_audio(video_url: str) -> str:
         "outtmpl": output_template,
         "quiet": True,
         "no_warnings": True,
+        "extractor_args": {"youtube": {"player_client": ["android"]}},
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(video_url, download=True)
