@@ -38,6 +38,7 @@ def download_youtube_audio(video_url: str) -> str:
 
     # Vercel (or local fallback): decode cookies from env var
     cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64")
+    print(f"[yt-dlp] VERCEL={os.environ.get('VERCEL')} COOKIES_B64_SET={bool(cookies_b64)} COOKIES_LEN={len(cookies_b64 or '')}")
     if cookies_b64:
         cookies_path = Path("/tmp/yt_cookies.txt")
         cookies_path.write_bytes(base64.b64decode(cookies_b64))
