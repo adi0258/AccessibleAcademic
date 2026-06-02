@@ -95,17 +95,23 @@ def process_lecture(
 
 @router.get("/debug-env")
 def debug_env():
-    import os, sys
+    import os, sys, shutil, sysconfig, glob
     cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64", "")
-    node_candidate = os.path.join(os.path.dirname(sys.executable), "node")
-    import shutil
+    scripts_dir = sysconfig.get_path("scripts")
+    # Search broadly for any node binary
+    search_results = glob.glob("/var/**/node", recursive=True)[:5] + \
+                     glob.glob("/usr/**/node", recursive=True)[:3] + \
+                     glob.glob("/home/**/node", recursive=True)[:3]
     return {
         "VERCEL": os.environ.get("VERCEL"),
         "COOKIES_B64_SET": bool(cookies_b64),
         "COOKIES_B64_LEN": len(cookies_b64),
-        "node_next_to_python": os.path.exists(node_candidate),
-        "node_candidate_path": node_candidate,
+        "python_exe": sys.executable,
+        "python_bin_dir": os.path.dirname(sys.executable),
+        "sysconfig_scripts": scripts_dir,
+        "node_in_scripts_dir": os.path.exists(os.path.join(scripts_dir or "", "node")),
         "system_node": shutil.which("node"),
+        "node_found_by_glob": search_results,
     }
 
 
