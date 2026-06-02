@@ -8,6 +8,8 @@ from app.core.database import engine
 from app.models import Lecture
 from app.services.ai_service import generate_study_material, transcribe_audio
 from app.services.audio_service import boost_audio
+from app.services.blob_service import upload_file_to_r2
+from app.services.video_url_service import download_youtube_audio, is_youtube_url
 
 
 def _update_lecture_progress(
@@ -37,8 +39,26 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
     is_url = audio_filename.startswith("http://") or audio_filename.startswith("https://")
 
     try:
-        if is_url:
-            # File is already in Vercel Blob — skip FFmpeg boost and AssemblyAI upload
+        if is_url and is_youtube_url(audio_filename):
+            # Download from YouTube → upload to R2 → process from R2 URL
+            _update_lecture_progress(lecture_id, "downloading_video", 5)
+            local_path = download_youtube_audio(audio_filename)
+
+            _update_lecture_progress(lecture_id, "uploading", 10)
+            r2_url = upload_file_to_r2(local_path, os.path.basename(local_path))
+
+            with Session(engine) as s:
+                lec = s.get(Lecture, lecture_id)
+                if lec:
+                    lec.filename = r2_url
+                    s.add(lec)
+                    s.commit()
+
+            _update_lecture_progress(lecture_id, "transcribing", 15)
+            audio_source = r2_url
+
+        elif is_url:
+            # File is already in Cloudflare R2 — skip FFmpeg boost and AssemblyAI upload
             _update_lecture_progress(lecture_id, "transcribing", 10)
             audio_source = audio_filename
         else:

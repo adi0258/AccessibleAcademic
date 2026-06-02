@@ -37,6 +37,15 @@ def generate_client_upload_token(pathname: str) -> dict:
     }
 
 
+def upload_file_to_r2(local_path: str, key: str) -> str:
+    """Upload a local file to R2 and return its public URL."""
+    bucket = os.environ["R2_BUCKET_NAME"]
+    public_base = os.environ["R2_PUBLIC_URL"].rstrip("/")
+    with open(local_path, "rb") as f:
+        _r2_client().put_object(Bucket=bucket, Key=key, Body=f)
+    return f"{public_base}/{key}"
+
+
 def delete_blob(blob_url: str) -> None:
     """Delete a file from R2 by its public URL. Silently ignores errors."""
     if not blob_url:

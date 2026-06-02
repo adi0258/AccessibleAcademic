@@ -9,3 +9,5 @@ python-bidi
 requests
 python-multipart
 python-docx
+yt-dlp
+psycopg2-binary

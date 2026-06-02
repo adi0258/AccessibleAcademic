@@ -8,6 +8,7 @@ from app.core.config import RECORDINGS_DIR
 from app.core.database import get_session
 from app.models import Lecture
 from app.services.blob_service import delete_blob, generate_client_upload_token
+from app.services.video_url_service import is_youtube_url
 from app.services.pdf_service import export_lecture_pdf
 from app.services.pipeline_service import run_full_pipeline
 from app.services.subtitle_service import export_lecture_srt, export_lecture_vtt
@@ -50,29 +51,36 @@ def process_lecture(
     session: Session = Depends(get_session),
     filename: str = "",
     blob_url: str = "",
+    video_url: str = "",
 ):
     if blob_url:
         audio_source = blob_url
+        stored_filename = blob_url
+    elif video_url:
+        audio_source = video_url
+        stored_filename = video_url
     elif filename:
         file_path = RECORDINGS_DIR / filename
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="File not found")
         audio_source = str(file_path)
+        stored_filename = filename
     else:
-        raise HTTPException(status_code=400, detail="Either filename or blob_url required")
+        raise HTTPException(status_code=400, detail="Either filename, blob_url, or video_url required")
 
-    # Free Vercel Blob quota: delete every existing lecture's blob before storing the new one
+    # Free R2 quota: delete every existing lecture's blob before storing the new one
     existing_lectures = session.exec(select(Lecture)).all()
     for old in existing_lectures:
         if old.filename and old.filename.startswith("http"):
-            delete_blob(old.filename)
+            if not is_youtube_url(old.filename):
+                delete_blob(old.filename)
             old.filename = ""
             session.add(old)
     session.commit()
 
     new_lecture = Lecture(
         title=title,
-        filename=blob_url or filename,
+        filename=stored_filename,
         status="processing",
         processing_stage="pending",
         progress_percent=0,
