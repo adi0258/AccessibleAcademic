@@ -46,16 +46,11 @@ def download_youtube_audio(video_url: str) -> str:
     node_path = _find_node_path()
 
     common_opts = {
-        "format": "bestaudio/best",
+        "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",
         "outtmpl": output_template,
         "quiet": False,
         "no_warnings": False,
         "remote_components": ["ejs:github"],
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["web", "mweb"],
-            }
-        },
     }
 
     # Tell yt-dlp exactly where node is — avoids relying on PATH discovery
