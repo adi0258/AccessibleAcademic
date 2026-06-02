@@ -93,6 +93,22 @@ def process_lecture(
     return {"message": "Started", "lecture_id": new_lecture.id}
 
 
+@router.get("/debug-env")
+def debug_env():
+    import os, sys
+    cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64", "")
+    node_candidate = os.path.join(os.path.dirname(sys.executable), "node")
+    import shutil
+    return {
+        "VERCEL": os.environ.get("VERCEL"),
+        "COOKIES_B64_SET": bool(cookies_b64),
+        "COOKIES_B64_LEN": len(cookies_b64),
+        "node_next_to_python": os.path.exists(node_candidate),
+        "node_candidate_path": node_candidate,
+        "system_node": shutil.which("node"),
+    }
+
+
 @router.get("/lectures", response_model=List[Lecture])
 def get_all_lectures(session: Session = Depends(get_session)):
     return session.exec(select(Lecture)).all()
