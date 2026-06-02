@@ -13,26 +13,21 @@ def is_youtube_url(url: str) -> bool:
     return any(d in url for d in _YOUTUBE_DOMAINS)
 
 
+def _ensure_node_in_path() -> None:
+    """Add nodejs-wheel-binaries Node.js to PATH so yt-dlp can solve n-challenge."""
+    try:
+        import nodejs.node as _node
+        node_dir = os.path.dirname(_node.path)
+        if node_dir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = node_dir + ":" + os.environ.get("PATH", "")
+    except Exception:
+        pass  # nodejs not installed — yt-dlp will try system node/deno
+
+
 def download_youtube_audio(video_url: str) -> str:
     """Download best-quality audio from a YouTube URL and return the local file path."""
-    # pytubefix solves YouTube's n-challenge in pure Python (no Deno/Node needed)
-    try:
-        return _download_pytubefix(video_url)
-    except Exception as e:
-        print(f"[yt-dlp] pytubefix failed ({e}), falling back to yt-dlp")
-        return _download_ytdlp(video_url)
-
-
-def _download_pytubefix(video_url: str) -> str:
-    from pytubefix import YouTube
-    from pytubefix.cli import on_progress
-
-    yt = YouTube(video_url, on_progress_callback=on_progress, use_oauth=False, allow_oauth_cache=False)
-    stream = yt.streams.filter(only_audio=True).order_by("abr").last()
-    if not stream:
-        raise RuntimeError("No audio stream found via pytubefix")
-    out_path = stream.download(output_path=str(RECORDINGS_DIR))
-    return out_path
+    _ensure_node_in_path()
+    return _download_ytdlp(video_url)
 
 
 def _download_ytdlp(video_url: str) -> str:

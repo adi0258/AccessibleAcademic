@@ -10,5 +10,5 @@ requests
 python-multipart
 python-docx
 yt-dlp
-pytubefix
+nodejs-wheel-binaries
 psycopg2-binary
