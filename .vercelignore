@@ -6,6 +6,7 @@ database.db
 
 # Local dev artifacts
 .venv/
+.venv1/
 venv/
 __pycache__/
 *.pyc
