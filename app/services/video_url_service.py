@@ -23,9 +23,12 @@ def download_youtube_audio(video_url: str) -> str:
         "outtmpl": output_template,
         "quiet": True,
         "no_warnings": True,
+        # ejs:github downloads YouTube's n-challenge solver script (needed to unlock audio/video formats)
+        "remote_components": "ejs:github",
         "extractor_args": {
             "youtube": {
-                "player_client": ["mweb", "web", "android"],
+                # android skips cookies so exclude it; web+mweb work with cookies+ejs solver
+                "player_client": ["web", "mweb"],
             }
         },
     }
