@@ -15,18 +15,28 @@ def is_youtube_url(url: str) -> bool:
 
 
 def _find_node_path() -> str | None:
-    """Find node binary — first from nodejs-wheel-binaries (same bin dir as Python), then system."""
-    import shutil
-    # nodejs-wheel-binaries installs node as a console script alongside Python
-    candidate = os.path.join(os.path.dirname(sys.executable), "node")
-    if os.path.exists(candidate):
-        print(f"[yt-dlp] Found node at {candidate}")
-        return candidate
+    """Find node binary from nodejs-wheel-binaries or system."""
+    import shutil, glob, sysconfig
+
+    candidates = [
+        os.path.join(os.path.dirname(sys.executable), "node"),
+        os.path.join(sysconfig.get_path("scripts") or "", "node"),
+        "/var/task/_vendor/nodejs_wheel/bin/node",   # Vercel runtime location
+    ]
+    for path in candidates:
+        if path and os.path.exists(path):
+            print(f"[yt-dlp] Found node at {path}")
+            return path
+
+    # Broader glob search (covers varying Vercel paths)
+    for pattern in ["/var/**/nodejs_wheel/bin/node", "/usr/**/nodejs_wheel/bin/node"]:
+        matches = glob.glob(pattern, recursive=True)
+        if matches:
+            print(f"[yt-dlp] Found node via glob at {matches[0]}")
+            return matches[0]
+
     system_node = shutil.which("node")
-    if system_node:
-        print(f"[yt-dlp] Found system node at {system_node}")
-    else:
-        print("[yt-dlp] No node binary found")
+    print(f"[yt-dlp] node={'not found' if not system_node else system_node}")
     return system_node
 
 
