@@ -40,7 +40,6 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
 
     try:
         if is_url and is_youtube_url(audio_filename):
-            # Download from YouTube → upload to R2 → process from R2 URL
             _update_lecture_progress(lecture_id, "downloading_video", 5)
             local_path = download_youtube_audio(audio_filename)
 
