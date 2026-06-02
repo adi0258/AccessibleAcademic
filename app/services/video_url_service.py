@@ -19,7 +19,7 @@ def download_youtube_audio(video_url: str) -> str:
 
     # tv_embedded and mweb clients are least likely to trigger bot detection
     base_opts = {
-        "format": "bestaudio[ext=m4a]/bestaudio",
+        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
         "outtmpl": output_template,
         "quiet": True,
         "no_warnings": True,
