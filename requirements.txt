@@ -10,4 +10,5 @@ requests
 python-multipart
 python-docx
 yt-dlp
+pytubefix
 psycopg2-binary
