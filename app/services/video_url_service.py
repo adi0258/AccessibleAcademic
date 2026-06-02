@@ -31,14 +31,10 @@ def download_youtube_audio(video_url: str) -> str:
         },
     }
 
-    # Local dev: read cookies directly from Firefox (most reliable — avoids stale cookie files)
+    # Local dev: read cookies directly from Firefox
     if os.environ.get("VERCEL") != "1":
-        for browser in ("firefox", "safari"):
-            try:
-                opts = {**common_opts, "cookiesfrombrowser": (browser, None, None, None)}
-                return _run_download(video_url, opts)
-            except Exception:
-                continue
+        opts = {**common_opts, "cookiesfrombrowser": ("firefox", None, None, None)}
+        return _run_download(video_url, opts)
 
     # Vercel (or local fallback): decode cookies from env var
     cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64")
