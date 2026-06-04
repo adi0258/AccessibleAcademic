@@ -1,6 +1,6 @@
 """
 Convert LaTeX math notation to readable Unicode text for PDF/DOCX exports.
-The web UI uses KaTeX for proper rendering; this handles file exports.
+The web UI uses KaTeX for proper rendering; this module handles file exports.
 """
 import re
 
@@ -17,7 +17,6 @@ _GREEK = {
     'Phi': 'Φ', 'Psi': 'Ψ', 'Omega': 'Ω',
 }
 
-# Math function names — strip \ but keep the ASCII name
 _FUNCTIONS = (
     'arcsin', 'arccos', 'arctan', 'sinh', 'cosh', 'tanh',
     'sin', 'cos', 'tan', 'cot', 'sec', 'csc',
@@ -41,121 +40,170 @@ _SYMBOLS = {
     'ldots': '…', 'cdots': '⋯', 'vdots': '⋮',
 }
 
-_SUB_DIGITS = str.maketrans('0123456789', '₀₁₂₃₄₅₆₇₈₉')
-_SUP_DIGITS = str.maketrans('0123456789', '⁰¹²³⁴⁵⁶⁷⁸⁹')
-_SUP_EXTRA = {'+': '⁺', '-': '⁻', 'n': 'ⁿ', 'i': 'ⁱ', 'x': 'ˣ', 'k': 'ᵏ'}
+_SUB_DIGITS  = str.maketrans('0123456789', '₀₁₂₃₄₅₆₇₈₉')
+_SUP_DIGITS  = str.maketrans('0123456789', '⁰¹²³⁴⁵⁶⁷⁸⁹')
+_SUP_EXTRA   = {'+': '⁺', '-': '⁻', 'n': 'ⁿ', 'i': 'ⁱ', 'x': 'ˣ', 'k': 'ᵏ', 'm': 'ᵐ'}
+# Unicode subscript letters that actually exist
+_SUB_LETTERS = {'a': 'ₐ', 'e': 'ₑ', 'o': 'ₒ', 'x': 'ₓ', 'i': 'ᵢ', 'j': 'ⱼ',
+                'n': 'ₙ', 'm': 'ₘ', 'l': 'ₗ', 'r': 'ᵣ', 's': 'ₛ', 't': 'ₜ',
+                'u': 'ᵤ', 'v': 'ᵥ', 'k': 'ₖ', 'p': 'ₚ'}
 
-# Regex to convert digit-subscripts inside complex subscript content
 _INNER_SUB = re.compile(r'_([0-9])')
 
 
+def _needs_group(s: str) -> bool:
+    """
+    Return True if expression s contains a top-level + or - and therefore
+    needs to be wrapped in parentheses when used as a fraction numerator/denominator.
+    """
+    depth = 0
+    for ch in s:
+        if ch in '({[':
+            depth += 1
+        elif ch in ')}]':
+            depth -= 1
+        elif depth == 0 and ch in '+-':
+            return True
+    return False
+
+
 def _to_sub(s: str) -> str:
-    """
-    Convert subscript content to Unicode.
-    Pure digit → Unicode subscript digits.
-    Single char → keep with _ prefix (e.g. _a, _n).
-    Complex → preprocess inner digit-subscripts then return _content.
-    """
-    if s.isdigit():
+    """Convert subscript content to Unicode."""
+    if re.fullmatch(r'[0-9]+', s):
         return s.translate(_SUB_DIGITS)
     if len(s) == 1:
-        converted = s.translate(_SUB_DIGITS)
-        # If it was a digit it converted; otherwise keep the letter with _
-        return converted if converted != s else f'_{s}'
-    # Complex: convert any digit subscripts nested inside first
+        if s.isdigit():
+            return s.translate(_SUB_DIGITS)
+        if s in _SUB_LETTERS:
+            return _SUB_LETTERS[s]
+        return f'_{s}'
+    # Complex subscript: convert nested digit subscripts then show as _content
     s = _INNER_SUB.sub(lambda m: m.group(1).translate(_SUB_DIGITS), s)
     return f'_{s}'
 
 
 def _to_sup(s: str) -> str:
-    """
-    Convert superscript content to Unicode.
-    Single known char → Unicode superscript.
-    Complex → return ^content.
-    """
+    """Convert superscript content to Unicode."""
+    if re.fullmatch(r'[0-9]+', s):
+        return s.translate(_SUP_DIGITS)
     if len(s) == 1:
         if s.isdigit():
             return s.translate(_SUP_DIGITS)
         return _SUP_EXTRA.get(s, f'^{s}')
-    if s.isdigit():
-        return s.translate(_SUP_DIGITS)
-    # Complex: convert digit chars where possible
     result = ''.join(
         c.translate(_SUP_DIGITS) if c.isdigit() else _SUP_EXTRA.get(c, c)
         for c in s
     )
-    return f'^{result}' if result == s else result
+    return result if result != s else f'^{s}'
 
 
-def latex_to_text(text: str) -> str:
-    """Convert LaTeX notation to readable Unicode text for PDF/DOCX export."""
-    if not text:
-        return text
-
-    # 1. \frac{num}{den} → (num)/(den)  — recursive so nested fracs work
+def _process_math(text: str) -> str:
+    """
+    Apply all LaTeX-to-Unicode conversions to a math-only string
+    (no $ delimiters, no surrounding natural-language text).
+    """
+    # 1. \frac{num}{den} → num/den  (parens only when the expression contains ±)
     def _frac(m: re.Match) -> str:
-        return f'({latex_to_text(m.group(1))})/({latex_to_text(m.group(2))})'
+        num = _process_math(m.group(1))
+        den = _process_math(m.group(2))
+        n = f'({num})' if _needs_group(num) else num
+        d = f'({den})' if _needs_group(den) else den
+        return f'{n}/{d}'
     text = re.sub(r'\\frac\{([^{}]+)\}\{([^{}]+)\}', _frac, text)
 
     # 2. \sqrt{x} → √(x)
     text = re.sub(r'\\sqrt\{([^{}]+)\}',
-                  lambda m: f'√({latex_to_text(m.group(1))})', text)
+                  lambda m: f'√({_process_math(m.group(1))})', text)
     text = re.sub(r'\\sqrt\s*(\S)', r'√\1', text)
 
     # 3. Remove \left / \right bracket helpers
-    text = re.sub(r'\\(?:left|right)\s*[()[\]{}|.]?', '', text)
+    text = re.sub(r'\\(?:left|right)\s*[()[\]{}|.\\]?', '', text)
 
-    # 4. Thin-space helpers and display alignment
+    # 4. Spacing helpers → single space; line-break/alignment → space
     text = re.sub(r'\\[,;!]', ' ', text)
-    text = re.sub(r'\\\\', ' ', text)      # line-break in align environments
-    text = re.sub(r'&', ' ', text)          # alignment tab
+    text = re.sub(r'\\ ', ' ', text)          # backslash-space
+    text = re.sub(r'\\(?:quad|qquad)\b', '  ', text)
+    text = re.sub(r'\\\\', ' ', text)
+    text = re.sub(r'&', ' ', text)
 
-    # 5. Math function names: \lim → lim, \sin → sin …
-    # (?![a-zA-Z]) stops \inf matching inside \infty, and \sup inside \supset
+    # 5. Style wrappers that should be stripped but content kept
+    text = re.sub(r'\\(?:displaystyle|textstyle|scriptstyle|normalsize)\b\s*', '', text)
+
+    # 6. Math function names  e.g. \lim, \sin
     for fn in _FUNCTIONS:
         text = re.sub(r'\\' + re.escape(fn) + r'(?![a-zA-Z])', fn, text)
 
-    # 6. Greek letters and operator symbols (longest first avoids prefix clashes)
+    # 7. Greek letters and operator symbols (longest first to avoid prefix clashes)
     all_syms = {**_GREEK, **_SYMBOLS}
     for name, sym in sorted(all_syms.items(), key=lambda kv: -len(kv[0])):
         text = text.replace(f'\\{name}', sym)
 
-    # 7. Superscripts — single combined pass (avoids double-processing)
+    # 8. Superscripts — single combined pass
     text = re.sub(
         r'\^\{([^{}]*)\}|\^([^\s{\\])',
         lambda m: _to_sup(m.group(1) if m.group(1) is not None else m.group(2)),
         text,
     )
 
-    # 8. Subscripts — single combined pass
+    # 9. Subscripts — single combined pass
     text = re.sub(
         r'_\{([^{}]*)\}|_([^\s{\\])',
         lambda m: _to_sub(m.group(1) if m.group(1) is not None else m.group(2)),
         text,
     )
 
-    # 9. Apostrophe after letter → prime symbol ′
+    # 10. Letter followed by apostrophe → prime symbol
     text = re.sub(r"([a-zA-Zα-ωΑ-Ω])'", r'\1′', text)
 
-    # 10. Strip formatting wrappers: \text{…}, \mathrm{…}, etc.
+    # 11. Strip formatting wrappers
     text = re.sub(
         r'\\(?:text|mathrm|mathbf|mathit|mathbb|mathcal|operatorname)\{([^{}]*)\}',
         r'\1', text,
     )
 
-    # 11. Remove remaining unknown \commands
+    # 12. Remove remaining unknown \commands (but NOT bare backslashes)
     text = re.sub(r'\\[a-zA-Z]+\b\s*', '', text)
 
-    # 12. Strip all four LaTeX math delimiter styles
-    text = re.sub(r'\$\$(.+?)\$\$', r'\1', text, flags=re.DOTALL)
-    text = re.sub(r'\\\[(.+?)\\\]',  r'\1', text, flags=re.DOTALL)
-    text = re.sub(r'\$(.+?)\$',       r'\1', text)
-    text = re.sub(r'\\\((.+?)\\\)',   r'\1', text)
-
-    # 13. Remove stray braces left over
+    # 13. Strip stray braces
     text = text.replace('{', '').replace('}', '')
 
     # 14. Normalise whitespace
     text = re.sub(r'  +', ' ', text).strip()
 
+    return text
+
+
+def latex_to_text(text: str) -> str:
+    """
+    Convert a string that may contain LaTeX math delimiters mixed with
+    natural-language text into readable Unicode.
+
+    Display math ($$...$$  or  \\[...\\]) is placed on its own line.
+    Inline math ($...$  or  \\(...\\)) is converted in-place.
+    """
+    if not text:
+        return text
+
+    # ── 1.  Display math → own line ──────────────────────────────────────────
+    def _replace_display(m: re.Match) -> str:
+        inner = m.group(1) or m.group(2) or ''
+        converted = _process_math(inner.strip())
+        return f'\n{converted}\n'
+
+    text = re.sub(r'\$\$(.+?)\$\$',    _replace_display, text, flags=re.DOTALL)
+    text = re.sub(r'\\\[(.+?)\\\]',     _replace_display, text, flags=re.DOTALL)
+
+    # ── 2.  Inline math → processed in-place ─────────────────────────────────
+    def _replace_inline(m: re.Match) -> str:
+        inner = m.group(1) or m.group(2) or ''
+        return _process_math(inner.strip())
+
+    text = re.sub(r'\$(.+?)\$',         _replace_inline, text)
+    text = re.sub(r'\\\((.+?)\\\)',      _replace_inline, text)
+
+    # ── 3.  Any remaining LaTeX outside delimiters (edge cases) ──────────────
+    text = _process_math(text)
+
+    # ── 4.  Collapse excessive blank lines but keep intentional ones ──────────
+    text = re.sub(r'\n{3,}', '\n\n', text)
     return text
