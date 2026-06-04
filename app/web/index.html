@@ -398,18 +398,22 @@
     }
 
     let lastLecturesSignature = '';
+    let lecturesLoaded = false;
 
     async function loadLectures() {
       try {
         const res = await fetch(API_BASE + '/lectures');
         const lectures = await res.json();
         const sig = lecturesSignature(lectures);
+        lecturesLoaded = true;
         if (sig === lastLecturesSignature) return;
         lastLecturesSignature = sig;
         renderLectures(lectures);
       } catch (e) {
         console.error('Failed to load lectures', e);
-        document.getElementById('lectures-list').innerHTML = '<p class="text-red-500 p-4">' + t('index.loadLecturesError') + '</p>';
+        if (!lecturesLoaded) {
+          document.getElementById('lectures-list').innerHTML = '<p class="text-red-500 p-4">' + t('index.loadLecturesError') + '</p>';
+        }
       }
     }
 

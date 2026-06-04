@@ -63,15 +63,6 @@ def process_lecture(
     else:
         raise HTTPException(status_code=400, detail="Either filename or blob_url required")
 
-    # Free R2 quota: delete every existing lecture's blob before storing the new one
-    existing_lectures = session.exec(select(Lecture)).all()
-    for old in existing_lectures:
-        if old.filename and old.filename.startswith("http"):
-            delete_blob(old.filename)
-            old.filename = ""
-            session.add(old)
-    session.commit()
-
     new_lecture = Lecture(
         title=title,
         filename=stored_filename,
