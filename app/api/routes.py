@@ -8,7 +8,6 @@ from app.core.config import RECORDINGS_DIR
 from app.core.database import get_session
 from app.models import Lecture
 from app.services.blob_service import delete_blob, generate_client_upload_token
-from app.services.video_url_service import is_youtube_url
 from app.services.pdf_service import export_lecture_pdf
 from app.services.pipeline_service import run_full_pipeline
 from app.services.subtitle_service import export_lecture_srt, export_lecture_vtt
@@ -51,14 +50,10 @@ def process_lecture(
     session: Session = Depends(get_session),
     filename: str = "",
     blob_url: str = "",
-    video_url: str = "",
 ):
     if blob_url:
         audio_source = blob_url
         stored_filename = blob_url
-    elif video_url:
-        audio_source = video_url
-        stored_filename = video_url
     elif filename:
         file_path = RECORDINGS_DIR / filename
         if not file_path.exists():
@@ -66,14 +61,13 @@ def process_lecture(
         audio_source = str(file_path)
         stored_filename = filename
     else:
-        raise HTTPException(status_code=400, detail="Either filename, blob_url, or video_url required")
+        raise HTTPException(status_code=400, detail="Either filename or blob_url required")
 
     # Free R2 quota: delete every existing lecture's blob before storing the new one
     existing_lectures = session.exec(select(Lecture)).all()
     for old in existing_lectures:
         if old.filename and old.filename.startswith("http"):
-            if not is_youtube_url(old.filename):
-                delete_blob(old.filename)
+            delete_blob(old.filename)
             old.filename = ""
             session.add(old)
     session.commit()
@@ -96,16 +90,12 @@ def process_lecture(
 @router.get("/debug-env")
 def debug_env():
     import os, sys, shutil, sysconfig, glob
-    cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64", "")
     scripts_dir = sysconfig.get_path("scripts")
-    # Search broadly for any node binary
     search_results = glob.glob("/var/**/node", recursive=True)[:5] + \
                      glob.glob("/usr/**/node", recursive=True)[:3] + \
                      glob.glob("/home/**/node", recursive=True)[:3]
     return {
         "VERCEL": os.environ.get("VERCEL"),
-        "COOKIES_B64_SET": bool(cookies_b64),
-        "COOKIES_B64_LEN": len(cookies_b64),
         "python_exe": sys.executable,
         "python_bin_dir": os.path.dirname(sys.executable),
         "sysconfig_scripts": scripts_dir,

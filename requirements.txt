@@ -9,6 +9,4 @@ python-bidi
 requests
 python-multipart
 python-docx
-yt-dlp
-nodejs-wheel-binaries
 psycopg2-binary
