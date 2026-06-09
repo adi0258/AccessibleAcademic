@@ -114,6 +114,17 @@ def _process_math(text: str) -> str:
     Apply all LaTeX-to-Unicode conversions to a math-only string
     (no $ delimiters, no surrounding natural-language text).
     """
+    # 0. Restore LaTeX commands corrupted by JSON escape-sequence mishandling.
+    # The AI sometimes outputs \boldsymbol, \frac, \rightarrow etc. without
+    # doubling the backslash in JSON.  JSON parses \b → U+0008 (backspace),
+    # \f → U+000C (form feed), \r → U+000D (CR), \t → U+0009 (tab),
+    # \n → U+000A (LF).  Restore them before any other processing.
+    text = re.sub(r'\x08([a-zA-Z])', r'\\b\1', text)   # backspace + letter → \b...
+    text = re.sub(r'\x0c([a-zA-Z])', r'\\f\1', text)   # form feed + letter  → \f...
+    text = re.sub(r'\x0d([a-zA-Z])', r'\\r\1', text)   # CR + letter         → \r...
+    text = re.sub(r'\x09([a-zA-Z])', r'\\t\1', text)   # tab + letter        → \t...
+    text = re.sub(r'\x0a([a-zA-Z])', r'\\n\1', text)   # LF + letter         → \n...
+
     # 0a. Expand common shorthand macros (\R → ℝ, \N → ℕ …)
     for macro, replacement in _MACROS.items():
         text = text.replace(macro, replacement)
@@ -194,7 +205,10 @@ def _process_math(text: str) -> str:
     # 13. Strip stray braces
     text = text.replace('{', '').replace('}', '')
 
-    # 14. Normalise whitespace
+    # 14. Strip bare backslashes not starting a valid LaTeX sequence (e.g. from \\)
+    text = re.sub(r'\\(?![a-zA-Z{(\\])', '', text)
+
+    # 15. Normalise whitespace
     text = re.sub(r'  +', ' ', text).strip()
 
     return text
@@ -210,6 +224,14 @@ def latex_to_text(text: str) -> str:
     """
     if not text:
         return text
+
+    # Restore LaTeX commands corrupted by JSON escape-sequence mishandling
+    # (same fix as _process_math step 0, applied to the full mixed text)
+    text = re.sub(r'\x08([a-zA-Z])', r'\\b\1', text)
+    text = re.sub(r'\x0c([a-zA-Z])', r'\\f\1', text)
+    text = re.sub(r'\x0d([a-zA-Z])', r'\\r\1', text)
+    text = re.sub(r'\x09([a-zA-Z])', r'\\t\1', text)
+    text = re.sub(r'\x0a([a-zA-Z])', r'\\n\1', text)
 
     # ── 1.  Display math → own line ──────────────────────────────────────────
     def _replace_display(m: re.Match) -> str:

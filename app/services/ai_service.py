@@ -1,9 +1,30 @@
 import os
+import re
 import time
 from typing import Optional
 
 import requests
 from openai import BadRequestError, OpenAI
+
+
+def _fix_json_latex_escapes(s: str) -> str:
+    """
+    Restore LaTeX commands that were corrupted by JSON escape-sequence parsing.
+
+    The AI sometimes outputs LaTeX backslash commands (\\boldsymbol, \\frac,
+    \\rightarrow …) with a single backslash inside a JSON string.  The JSON
+    parser then converts \\b → U+0008 (backspace), \\f → U+000C (form feed),
+    \\r → U+000D (CR), \\t → U+0009 (tab), \\n → U+000A (LF).
+
+    This function reverses that, so the stored string contains proper LaTeX.
+    Called on the raw AI content string before it is saved to the database.
+    """
+    s = re.sub(r'\x08([a-zA-Z])', r'\\b\1', s)   # backspace + letter  → \\b...
+    s = re.sub(r'\x0c([a-zA-Z])', r'\\f\1', s)   # form feed + letter  → \\f...
+    s = re.sub(r'\x0d([a-zA-Z])', r'\\r\1', s)   # CR + letter         → \\r...
+    s = re.sub(r'\x09([a-zA-Z])', r'\\t\1', s)   # tab + letter        → \\t...
+    s = re.sub(r'\x0a([a-zA-Z])', r'\\n\1', s)   # LF + letter         → \\n...
+    return s
 
 
 ASSEMBLY_API_KEY = os.getenv("ASSEMBLY_API_KEY")
@@ -151,14 +172,18 @@ def generate_study_material(text: str):
                             "IMPORTANT LaTeX restrictions: only use standard KaTeX-supported commands. "
                             "NEVER use \\begin{align} or any \\begin{...} environments — use separate $$...$$ blocks instead. "
                             "NEVER use custom macros like \\R, \\N, \\Z — write \\mathbb{R}, \\mathbb{N}, \\mathbb{Z} in full. "
-                            "NEVER put Hebrew text directly inside math mode — use \\text{Hebrew} for Hebrew inside math."
+                            "NEVER put Hebrew text directly inside math mode — use \\text{Hebrew} for Hebrew inside math. "
+                            "NEVER use \\boldsymbol — use \\mathbf instead for bold math symbols."
                         ),
                     },
                     {"role": "user", "content": prompt},
                 ],
                 response_format={"type": "json_object"},
             )
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            # Sanitize: restore LaTeX commands corrupted by JSON escape parsing
+            # (e.g. \boldsymbol → U+0008 + oldsymbol due to JSON \b escape)
+            return _fix_json_latex_escapes(content)
         except BadRequestError as e:
             err_body = getattr(e, "body", {}) or {}
             err_code = ((err_body.get("error") or {}).get("code")) if isinstance(err_body, dict) else None

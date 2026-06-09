@@ -66,8 +66,11 @@ def _mr(text: str) -> etree._Element:
     """Create an OMML math-run element."""
     r = _mel('r')
     t = _mel('t')
-    t.text = str(text)
-    if t.text and (' ' in t.text or (t.text[:1] == ' ') or (t.text[-1:] == ' ')):
+    # Strip characters that are illegal in XML 1.0 (U+0000–U+0008, U+000B–U+000C,
+    # U+000E–U+001F) – these arise when the AI mis-escapes LaTeX in JSON.
+    safe = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', str(text))
+    t.text = safe
+    if safe and (' ' in safe or safe[:1] == ' ' or safe[-1:] == ' '):
         t.set(_XML_SPACE, 'preserve')
     r.append(t)
     return r
@@ -170,30 +173,23 @@ def _build_nodes(latex: str) -> list:
 
             elif cmd in ('vec', 'overrightarrow', 'hat', 'bar',
                          'tilde', 'dot', 'ddot', 'check', 'acute', 'grave'):
-                # Render as OMML accent element
+                # Render accent as base text + Unicode combining character
                 flush()
                 inner_s, i = _get_group(latex, i)
-                _ACCENT_CHARS = {
+                _ACCENT_SUFFIX = {
                     'vec': '⃗', 'overrightarrow': '⃗',
                     'hat': '̂', 'bar': '̅',
                     'tilde': '̃', 'dot': '̇',
                     'ddot': '̈', 'check': '̌',
                     'acute': '́', 'grave': '̀',
                 }
-                acc = _mel('acc')
-                accPr = _mel('accPr')
-                chr_el = _mel('chr')
-                chr_el.set(f'{{{_M}}}val', _ACCENT_CHARS.get(cmd, '⃗'))
-                accPr.append(chr_el)
-                e_el = _mel('e')
-                for n in _build_nodes(inner_s):
-                    e_el.append(n)
-                acc.append(accPr)
-                acc.append(e_el)
-                nodes.append(acc)
+                from app.services.math_utils import _process_math
+                inner_text = _process_math(inner_s)
+                suffix = _ACCENT_SUFFIX.get(cmd, '')
+                nodes.append(_mr(inner_text + suffix))
 
             elif cmd in ('text', 'mathrm', 'mathbf', 'mathit',
-                         'mathbb', 'mathcal', 'operatorname'):
+                         'mathbb', 'mathcal', 'operatorname', 'boldsymbol'):
                 inner_s, i = _get_group(latex, i)
                 buf += inner_s
 
@@ -437,11 +433,21 @@ def _add_rtl_paragraph(document: Document, text: str, *,
                 run.font.name = 'Arial'
                 _set_run_rtl(run)
         else:
-            # Plain text run — strip any stray LaTeX artifacts
-            cleaned = re.sub(r'\\\\', ' ', content)   # \\ line breaks
-            cleaned = re.sub(r'\\[,;! ]', ' ', cleaned)  # spacing commands
+            # Plain text run — restore corrupted LaTeX escapes, then strip artifacts
+            # Restore control chars from JSON escape mishandling (\b→backspace etc.)
+            cleaned = re.sub(r'\x08([a-zA-Z])', r'\\b\1', content)
+            cleaned = re.sub(r'\x0c([a-zA-Z])', r'\\f\1', cleaned)
+            cleaned = re.sub(r'\x0d([a-zA-Z])', r'\\r\1', cleaned)
+            cleaned = re.sub(r'\x09([a-zA-Z])', r'\\t\1', cleaned)
+            cleaned = re.sub(r'\x0a([a-zA-Z])', r'\\n\1', cleaned)
+            # Strip any remaining invalid XML control characters
+            cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', cleaned)
+            # Strip LaTeX artifacts
+            cleaned = re.sub(r'\\\\', ' ', cleaned)          # \\ line breaks
+            cleaned = re.sub(r'\\[,;! ]', ' ', cleaned)      # spacing commands
             cleaned = re.sub(r'\\[a-zA-Z]+\b\s*', '', cleaned)  # unknown \cmd
             cleaned = cleaned.replace('{', '').replace('}', '')
+            cleaned = re.sub(r'\\(?![a-zA-Z{(\\])', '', cleaned)  # bare backslash
             cleaned = re.sub(r'  +', ' ', cleaned).strip()
             if cleaned:
                 run = paragraph.add_run(cleaned)
