@@ -147,7 +147,11 @@ def generate_study_material(text: str):
                             "CRITICAL RULE: Every mathematical expression — functions, derivatives, integrals, limits, "
                             "vectors, matrices, equations, inequalities, Greek letters, exponents, subscripts — MUST be "
                             "written in LaTeX notation. Use $...$ for inline math and $$...$$ for display math. "
-                            "NEVER write math in plain words or plain text. For example, write $f'(x_0)$ not 'הנגזרת של f בנקודה x0'."
+                            "NEVER write math in plain words or plain text. For example, write $f'(x_0)$ not 'הנגזרת של f בנקודה x0'. "
+                            "IMPORTANT LaTeX restrictions: only use standard KaTeX-supported commands. "
+                            "NEVER use \\begin{align} or any \\begin{...} environments — use separate $$...$$ blocks instead. "
+                            "NEVER use custom macros like \\R, \\N, \\Z — write \\mathbb{R}, \\mathbb{N}, \\mathbb{Z} in full. "
+                            "NEVER put Hebrew text directly inside math mode — use \\text{Hebrew} for Hebrew inside math."
                         ),
                     },
                     {"role": "user", "content": prompt},

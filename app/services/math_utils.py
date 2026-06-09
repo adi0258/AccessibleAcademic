@@ -34,10 +34,22 @@ _SYMBOLS = {
     'rightarrow': '→', 'to': '→', 'leftarrow': '←', 'mapsto': '↦',
     'Rightarrow': '⇒', 'Leftarrow': '⇐', 'Leftrightarrow': '⟺',
     'in': '∈', 'notin': '∉', 'subset': '⊂', 'supset': '⊃',
-    'cup': '∪', 'cap': '∩', 'emptyset': '∅',
-    'forall': '∀', 'exists': '∃',
-    'circ': '∘', 'propto': '∝',
-    'ldots': '…', 'cdots': '⋯', 'vdots': '⋮',
+    'subseteq': '⊆', 'supseteq': '⊇',
+    'cup': '∪', 'cap': '∩', 'emptyset': '∅', 'varnothing': '∅',
+    'forall': '∀', 'exists': '∃', 'nexists': '∄',
+    'circ': '∘', 'propto': '∝', 'perp': '⊥', 'parallel': '∥',
+    'ldots': '…', 'cdots': '⋯', 'vdots': '⋮', 'ddots': '⋱',
+    'langle': '⟨', 'rangle': '⟩',
+    'lceil': '⌈', 'rceil': '⌉', 'lfloor': '⌊', 'rfloor': '⌋',
+    'setminus': '∖', 'oplus': '⊕', 'otimes': '⊗',
+    'therefore': '∴', 'because': '∵',
+    'iff': '⟺', 'implies': '⇒',
+}
+
+# Common shorthand macros used in Israeli math education
+_MACROS = {
+    r'\R': 'ℝ', r'\N': 'ℕ', r'\Z': 'ℤ', r'\Q': 'ℚ',
+    r'\C': 'ℂ', r'\F': '𝔽', r'\eps': 'ε', r'\e': 'e',
 }
 
 _SUB_DIGITS  = str.maketrans('0123456789', '₀₁₂₃₄₅₆₇₈₉')
@@ -102,6 +114,21 @@ def _process_math(text: str) -> str:
     Apply all LaTeX-to-Unicode conversions to a math-only string
     (no $ delimiters, no surrounding natural-language text).
     """
+    # 0a. Expand common shorthand macros (\R → ℝ, \N → ℕ …)
+    for macro, replacement in _MACROS.items():
+        text = text.replace(macro, replacement)
+
+    # 0b. Strip \begin{...} / \end{...} environment tags — keep inner content
+    text = re.sub(r'\\(?:begin|end)\{[^}]*\}', '', text)
+
+    # 0c. Accents: \vec{x} → x⃗, \hat{x} → x̂, etc.
+    for _acc, _mark in [('vec','⃗'),('hat','̂'),('bar','̅'),('tilde','̃'),('dot','̇'),('ddot','̈')]:
+        text = re.sub(
+            r'\\' + _acc + r'\{([^{}]{1,20})\}',
+            lambda m, mk=_mark: (m.group(1) + mk if len(m.group(1)) == 1 else f'({m.group(1)}){mk}'),
+            text,
+        )
+
     # 1. \frac{num}{den} → num/den  (parens only when the expression contains ±)
     def _frac(m: re.Match) -> str:
         num = _process_math(m.group(1))
@@ -190,6 +217,11 @@ def latex_to_text(text: str) -> str:
         converted = _process_math(inner.strip())
         return f'\n{converted}\n'
 
+    # \begin{align}...\end{align} and similar environments → display math
+    text = re.sub(
+        r'\\begin\{(?:align|equation|gather|multline)\*?\}(.+?)\\end\{(?:align|equation|gather|multline)\*?\}',
+        _replace_display, text, flags=re.DOTALL,
+    )
     text = re.sub(r'\$\$(.+?)\$\$',    _replace_display, text, flags=re.DOTALL)
     text = re.sub(r'\\\[(.+?)\\\]',     _replace_display, text, flags=re.DOTALL)
 

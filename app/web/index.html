@@ -337,6 +337,17 @@
               {left: '\\(', right: '\\)', display: false},
             ],
             throwOnError: false,
+            strict: false,
+            macros: {
+              '\\R': '\\mathbb{R}',
+              '\\N': '\\mathbb{N}',
+              '\\Z': '\\mathbb{Z}',
+              '\\Q': '\\mathbb{Q}',
+              '\\C': '\\mathbb{C}',
+              '\\F': '\\mathbb{F}',
+              '\\eps': '\\varepsilon',
+              '\\d':  '\\mathrm{d}',
+            },
           });
         }
       });
