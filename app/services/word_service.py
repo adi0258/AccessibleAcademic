@@ -168,6 +168,30 @@ def _build_nodes(latex: str) -> list:
                 flush()
                 nodes.append(_mr(' ' + _SYM_OMML[cmd] + ' '))
 
+            elif cmd in ('vec', 'overrightarrow', 'hat', 'bar',
+                         'tilde', 'dot', 'ddot', 'check', 'acute', 'grave'):
+                # Render as OMML accent element
+                flush()
+                inner_s, i = _get_group(latex, i)
+                _ACCENT_CHARS = {
+                    'vec': '⃗', 'overrightarrow': '⃗',
+                    'hat': '̂', 'bar': '̅',
+                    'tilde': '̃', 'dot': '̇',
+                    'ddot': '̈', 'check': '̌',
+                    'acute': '́', 'grave': '̀',
+                }
+                acc = _mel('acc')
+                accPr = _mel('accPr')
+                chr_el = _mel('chr')
+                chr_el.set(f'{{{_M}}}val', _ACCENT_CHARS.get(cmd, '⃗'))
+                accPr.append(chr_el)
+                e_el = _mel('e')
+                for n in _build_nodes(inner_s):
+                    e_el.append(n)
+                acc.append(accPr)
+                acc.append(e_el)
+                nodes.append(acc)
+
             elif cmd in ('text', 'mathrm', 'mathbf', 'mathit',
                          'mathbb', 'mathcal', 'operatorname'):
                 inner_s, i = _get_group(latex, i)
@@ -413,9 +437,14 @@ def _add_rtl_paragraph(document: Document, text: str, *,
                 run.font.name = 'Arial'
                 _set_run_rtl(run)
         else:
-            # Plain text run (already decoded; no raw LaTeX expected here)
-            if content:
-                run = paragraph.add_run(content)
+            # Plain text run — strip any stray LaTeX artifacts
+            cleaned = re.sub(r'\\\\', ' ', content)   # \\ line breaks
+            cleaned = re.sub(r'\\[,;! ]', ' ', cleaned)  # spacing commands
+            cleaned = re.sub(r'\\[a-zA-Z]+\b\s*', '', cleaned)  # unknown \cmd
+            cleaned = cleaned.replace('{', '').replace('}', '')
+            cleaned = re.sub(r'  +', ' ', cleaned).strip()
+            if cleaned:
+                run = paragraph.add_run(cleaned)
                 run.bold = bold
                 run.font.size = Pt(font_size)
                 run.font.name = 'Arial'
