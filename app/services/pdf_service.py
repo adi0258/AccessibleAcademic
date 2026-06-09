@@ -133,8 +133,8 @@ def export_lecture_pdf(lecture_id: int, session: Session):
         # Write centred in the box
         pdf.set_font(font, "", 12)
         pdf.set_text_color(20, 60, 120)
-        pdf.set_x(pdf.l_margin)
-        pdf.cell(usable_w, box_h, txt=converted, align="C")
+        pdf.set_xy(pdf.l_margin, pdf.get_y())
+        pdf.multi_cell(usable_w, box_h, txt=converted, align="C")
         pdf.set_text_color(0, 0, 0)
         pdf.set_draw_color(0, 0, 0)
         pdf.ln(3)
