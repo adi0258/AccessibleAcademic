@@ -146,3 +146,15 @@ def export_lecture_subtitles_vtt(lecture_id: int, session: Session = Depends(get
 def export_lecture_subtitles_vvt_alias(lecture_id: int, session: Session = Depends(get_session)):
     # Backward-compatible alias for common typo ("vvt" instead of "vtt")
     return export_lecture_vtt(lecture_id, session)
+
+
+@router.get("/lectures/{lecture_id}/validation")
+def get_lecture_validation(lecture_id: int, session: Session = Depends(get_session)):
+    """Return the grounding validation report for a lecture."""
+    lecture = session.get(Lecture, lecture_id)
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+    if not lecture.validation_json:
+        raise HTTPException(status_code=404, detail="Validation report not available for this lecture")
+    import json as _json
+    return _json.loads(lecture.validation_json)

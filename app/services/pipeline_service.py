@@ -9,6 +9,7 @@ from app.models import Lecture
 from app.services.ai_service import generate_study_material, transcribe_audio
 from app.services.audio_service import boost_audio
 from app.services.blob_service import upload_file_to_r2
+from app.services.validation_service import validate_study_material
 
 
 def _update_lecture_progress(
@@ -71,10 +72,21 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
         _update_lecture_progress(lecture_id, "generating_study_material", 90)
         processed = generate_study_material(transcript_text)
 
+        _update_lecture_progress(lecture_id, "validating_content", 95)
+        validation = validate_study_material(transcript_text, processed)
+
+        # Use purified content if the validator produced one; fall back to raw output
+        final_content_json = (
+            json.dumps(validation.purified_content, ensure_ascii=False)
+            if validation.purified_content
+            else processed
+        )
+
         with Session(engine) as session_processed:
             lecture = session_processed.get(Lecture, lecture_id)
             if lecture:
-                lecture.processed_content_json = processed
+                lecture.processed_content_json = final_content_json
+                lecture.validation_json = validation.to_json()
                 lecture.status = "completed"
                 lecture.processing_stage = "completed"
                 lecture.progress_percent = 100

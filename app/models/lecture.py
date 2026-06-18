@@ -16,3 +16,4 @@ class Lecture(SQLModel, table=True):
     # generating_study_material, completed
     processing_stage: Optional[str] = None
     progress_percent: Optional[int] = None
+    validation_json: Optional[str] = None

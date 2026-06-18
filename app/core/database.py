@@ -30,6 +30,7 @@ def create_db_and_tables() -> None:
                 ("assemblyai_transcript_id", "TEXT"),
                 ("processing_stage", "TEXT"),
                 ("progress_percent", "INTEGER"),
+                ("validation_json", "TEXT"),
             ]:
                 if col not in cols:
                     conn.execute(text(f"ALTER TABLE lecture ADD COLUMN {col} {spec}"))
