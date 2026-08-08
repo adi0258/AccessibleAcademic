@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accessible Academic — Poster</title>
+<style>
+@font-face{
+  font-family:'HeeboEmbed';
+  src:url(data:font/ttf;base64,__HEEBO__) format('truetype');
+  font-weight:100 900; font-display:block;
+}
+
+@page{ size:700mm 1000mm; margin:0; }
+*{ box-sizing:border-box; margin:0; padding:0; }
+
+:root{
+  --ink:#14181F;
+  --ink-2:#39434F;
+  --ink-3:#6E7885;
+  --rule:#CFCABF;
+  --paper:#FBFAF7;
+  --panel:#F2F0EA;
+  --teal:#0E5E52;
+}
+
+html,body{ background:#8A8A8A; }
+body{
+  font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+  color:var(--ink); -webkit-font-smoothing:antialiased; font-kerning:normal;
+}
+
+.sheet{
+  width:700mm; height:1000mm; background:var(--paper);
+  padding:15mm; display:flex; flex-direction:column; overflow:hidden;
+}
+
+/* ========== HEADER — fixed 10 cm band, per the exhibition spec ========== */
+header{ height:85mm; flex:0 0 auto; display:flex; flex-direction:column; justify-content:space-between; }
+.masthead{ display:flex; align-items:center; gap:9mm; flex:1 1 auto; }
+/* the college mark is a 2:1 landscape lockup; the project mark is square */
+.crest{ flex:0 0 auto; display:flex; align-items:center; justify-content:center; }
+.crest img{ width:100%; height:100%; object-fit:contain; }
+.crest.college{ width:76mm; height:38.2mm; }
+.crest.project{ width:42mm; height:42mm; }
+.crest .ph{
+  width:100%; height:100%; border:.5mm dashed var(--rule); border-radius:1.5mm;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  font-size:3.4mm; text-align:center; color:var(--ink-3); line-height:1.4;
+}
+.crest .ph b{ display:block; font-size:4mm; color:var(--ink-2); margin-bottom:1.2mm; }
+
+.title-block{ flex:1 1 auto; }
+h1{ font-size:27mm; line-height:.94; font-weight:700; letter-spacing:-.7mm; }
+h1 .thin{ font-weight:200; }
+.byline{ margin-top:4.5mm; display:flex; }
+.byline .grp{ padding-right:8mm; margin-right:8mm; border-right:.35mm solid var(--rule); }
+.byline .grp:last-child{ border-right:0; }
+.byline .lbl{
+  display:block; font-size:4mm; font-weight:700; letter-spacing:.5mm;
+  text-transform:uppercase; color:var(--teal); margin-bottom:1.4mm;
+}
+.byline .val{ font-size:6.6mm; font-weight:600; }
+.affil{
+  border-top:.35mm solid var(--rule); border-bottom:1.2mm solid var(--ink);
+  padding:2.6mm 0 3mm; display:flex; justify-content:space-between;
+  font-size:5.4mm; color:var(--ink-2);
+}
+.affil b{ color:var(--ink); font-weight:700; }
+
+/* ========== BODY ========== */
+main{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column;
+      justify-content:space-between; padding-top:11mm; padding-bottom:2mm; }
+
+/* ---- the promise ---- */
+.promise h2{ font-size:31mm; line-height:1.06; font-weight:700; letter-spacing:-.55mm; }
+.promise h2 em{ font-style:normal; color:var(--teal); }
+.promise p{
+  margin-top:7mm; font-size:12.5mm; line-height:1.32; color:var(--ink-2);
+  font-weight:300; max-width:560mm;
+}
+
+/* ---- Adi ---- */
+.story{
+  background:var(--ink); color:#F4F2ED; border-radius:2mm;
+  padding:13mm 15mm; display:flex; gap:14mm; align-items:center;
+}
+.story .q{ flex:1 1 auto; }
+.story blockquote{
+  font-family:Georgia,'Times New Roman',serif; font-style:italic;
+  font-size:16.5mm; line-height:1.28; letter-spacing:-.15mm;
+}
+.story .who{
+  margin-top:8mm; padding-top:6.5mm; border-top:.4mm solid rgba(255,255,255,.3);
+  font-size:8mm; line-height:1.42; color:#C3CAC8;
+}
+.story .who b{ display:block; font-size:10mm; color:#fff; margin-bottom:1.6mm; font-weight:700; }
+.story .creed{
+  flex:0 0 196mm; border-left:.4mm solid rgba(255,255,255,.3); padding-left:16mm;
+  font-size:12.5mm; line-height:1.3; font-weight:600; color:#fff;
+}
+.story .creed span{ color:#6FBFAF; }
+
+/* ---- three steps ---- */
+.steps-head{
+  display:flex; align-items:baseline; gap:6mm;
+  border-bottom:.9mm solid var(--ink); padding-bottom:3mm; margin-bottom:8mm;
+}
+.steps-head h3{ font-size:19mm; font-weight:700; letter-spacing:-.2mm; }
+.steps-head .note{ margin-left:auto; font-size:8.4mm; color:var(--ink-3); }
+
+.steps{ display:flex; flex-direction:column; gap:9mm; }
+.step{ display:flex; gap:16mm; align-items:center; }
+.step.flip{ flex-direction:row-reverse; }
+.step .say{ flex:1 1 auto; display:flex; gap:9mm; align-items:flex-start; }
+.step .n{
+  width:21mm; height:21mm; flex:0 0 auto; border-radius:50%;
+  background:var(--teal); color:#fff; font-size:11.5mm; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+}
+.step h4{ font-size:15mm; font-weight:700; line-height:1.1; margin-bottom:4mm; letter-spacing:-.25mm; }
+.step p{ font-size:9.4mm; line-height:1.34; color:var(--ink-2); font-weight:300; }
+.step .art{ flex:0 0 250mm; }
+.step .art img{ width:100%; display:block; border-radius:1.6mm; }
+.shot{ border:.35mm solid var(--rule); }
+
+.player{ position:relative; border-radius:1.6mm; overflow:hidden; background:#000; }
+.player img{ width:100%; display:block; }
+.player .cc{
+  position:absolute; left:0; right:0; bottom:0; text-align:center;
+  background:linear-gradient(to top,rgba(0,0,0,.85),rgba(0,0,0,.45) 60%,transparent);
+  padding:13mm 4mm 4.5mm;
+}
+.player .cc span{
+  font-family:'HeeboEmbed','Arial Hebrew',Arial,sans-serif; direction:rtl;
+  color:#fff; font-size:6.4mm; font-weight:600; line-height:1.28;
+  text-shadow:0 .3mm .7mm rgba(0,0,0,.75);
+}
+.wavebox{ background:var(--panel); border-radius:1.6mm; padding:5mm; }
+.wavebox img{ width:100%; display:block; }
+.wavebox .rd{
+  display:flex; justify-content:space-between; margin-top:4mm;
+  border-top:.35mm solid var(--rule); padding-top:3.2mm;
+}
+.wavebox .rd div{ font-size:7mm; color:var(--ink-3); }
+.wavebox .rd b{ display:block; font-size:12mm; color:var(--teal); font-weight:700; line-height:1.1; }
+.wavebox .rd .a b{ color:var(--ink-3); }
+
+/* ---- what you get ---- */
+.gets{ display:flex; gap:9mm; }
+.get{ flex:1 1 0; border-top:1.2mm solid var(--ink); padding-top:4.5mm; }
+.get h4{ font-size:11mm; font-weight:700; line-height:1.14; margin-bottom:2.8mm; }
+.get p{ font-size:8.4mm; line-height:1.34; color:var(--ink-3); font-weight:300; }
+
+/* ---- built with ---- */
+.tech{ display:flex; gap:11mm; }
+.tech .col{ flex:1 1 0; border-top:1.2mm solid var(--ink); padding-top:4.5mm; }
+.tech .col .l{
+  font-size:4.4mm; font-weight:700; letter-spacing:.5mm; text-transform:uppercase;
+  color:var(--teal); margin-bottom:3mm;
+}
+.tech .col .v{ font-size:9mm; line-height:1.34; font-weight:600; letter-spacing:-.15mm; }
+.tech .col .v span{ color:var(--ink-3); font-weight:300; }
+
+/* ---- footer ---- */
+footer{
+  border-top:1.2mm solid var(--ink); padding-top:6.5mm;
+  display:flex; align-items:center; gap:12mm;
+}
+footer .qr{ width:40mm; height:40mm; flex:0 0 auto; }
+footer .qr img{ width:100%; height:100%; display:block; }
+footer .c .l{
+  font-size:4.4mm; font-weight:700; letter-spacing:.5mm; text-transform:uppercase;
+  color:var(--teal); margin-bottom:1.8mm;
+}
+footer .c .v{ font-size:7.4mm; line-height:1.45; color:var(--ink-2); }
+footer .c .v b{ color:var(--ink); font-weight:700; }
+footer .sign{
+  margin-left:auto; text-align:right;
+  font-size:12mm; line-height:1.24; font-weight:600; color:var(--teal);
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <!-- ================= HEADER ================= -->
+  <header>
+    <div class="masthead">
+      <div class="crest college">
+        <img src="img/mta-logo.svg" alt="The Academic College of Tel Aviv-Yaffo"
+             onerror="this.style.display='none';document.getElementById('crest-ph').style.display='flex';">
+        <div class="ph" id="crest-ph" style="display:none">
+          <b>College logo</b>save the file as<br>img/mta-logo.svg
+        </div>
+      </div>
+
+      <div class="title-block">
+        <h1>Accessible <span class="thin">Academic</span></h1>
+        <div class="byline">
+          <div class="grp">
+            <span class="lbl">Team</span>
+            <span class="val">Adi Tapiero &nbsp;·&nbsp; Matan Gurfinkel</span>
+          </div>
+          <div class="grp">
+            <span class="lbl">Academic mentor</span>
+            <span class="val">Dror Margalit</span>
+          </div>
+          <div class="grp">
+            <span class="lbl">Project no.</span>
+            <span class="val">15002930</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="crest project"><img src="img/project-logo.png" alt="Accessible Academic logo"></div>
+    </div>
+
+    <div class="affil">
+      <div><b>The Academic College of Tel Aviv&ndash;Yaffo</b> &nbsp;·&nbsp; School of Computer Science</div>
+      <div>Software Entrepreneurship Workshop 2025</div>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ================= THE PROMISE ================= -->
+    <section class="promise">
+      <h2>Every student deserves to <em>hear the lecture.</em></h2>
+      <p>We turn unclear Hebrew lecture recordings into accurate captions and
+         ready-to-use study material &mdash; automatically.</p>
+    </section>
+
+    <!-- ================= ADI'S STORY ================= -->
+    <section class="story">
+      <div class="q">
+        <blockquote>&ldquo;For three years I sat with recordings I could not follow.
+          No captions &mdash; or captions that got every technical word wrong.&rdquo;</blockquote>
+        <div class="who">
+          <b>Adi Tapiero</b>
+          Computer science student, hearing impaired.<br>
+          She built the tool she needed. It turned out everyone needed it.
+        </div>
+      </div>
+      <div class="creed">
+        Accessibility shouldn&rsquo;t be a checkbox.<br>
+        <span>It should be a commitment.</span>
+      </div>
+    </section>
+
+    <!-- ================= HOW IT WORKS ================= -->
+    <section>
+      <div class="steps-head">
+        <h3>How it works</h3>
+        <div class="note">Upload once. Everything else is automatic.</div>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="say">
+            <div class="n">1</div>
+            <div>
+              <h4>Upload the recording</h4>
+              <p>Any lecture file, straight from the browser. Nothing to install.</p>
+            </div>
+          </div>
+          <div class="art"><img class="shot" src="img/ui-upload.png" alt="Upload screen"></div>
+        </div>
+
+        <div class="step flip">
+          <div class="say">
+            <div class="n">2</div>
+            <div>
+              <h4>We rescue the audio</h4>
+              <p>Muffled hall recordings are cleaned up before a single word is transcribed.</p>
+            </div>
+          </div>
+          <div class="art">
+            <div class="wavebox">
+              <img src="img/waveform.svg" alt="Audio before and after">
+              <div class="rd">
+                <div class="a">Before<b>&minus;18.0 dB</b></div>
+                <div style="text-align:right">After<b>&minus;12.6 dB</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="say">
+            <div class="n">3</div>
+            <div>
+              <h4>Watch, read, revise</h4>
+              <p>Captions timed to every word, plus summaries and flashcards to take away.</p>
+            </div>
+          </div>
+          <div class="art">
+            <div class="player">
+              <img src="img/frame.jpg" alt="Lecture with captions">
+              <div class="cc"><span>&#1488;&#1495;&#1491; &#1504;&#1506; &#1489;&#1499;&#1497;&#1493;&#1493;&#1503; &#1514;&#1504;&#1493;&#1506;&#1514; &#1492;&#1508;&#1490;&#1494; &#1497;&#1492;&#1497;&#1493; &#1488;&#1495;&#1491;, &#1513;&#1504;&#1497; &#1489;&#1499;&#1497;&#1493;&#1493;&#1503; &#1492;&#1492;&#1508;&#1493;&#1498; &#1497;&#1492;&#1497;&#1493; &#1513;&#1514;&#1497;&#1497;&#1501;.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= WHAT YOU GET ================= -->
+    <section class="gets">
+      <div class="get">
+        <h4>Hebrew, done right</h4>
+        <p>Including the technical vocabulary automatic captions always break on.</p>
+      </div>
+      <div class="get">
+        <h4>Summaries you can trust</h4>
+        <p>Checked against the lecture itself, so nothing is invented.</p>
+      </div>
+      <div class="get">
+        <h4>Formulas stay formulas</h4>
+        <p>Mathematics survives into Word and PDF as real equations.</p>
+      </div>
+      <div class="get">
+        <h4>Yours to keep</h4>
+        <p>PDF, Word and subtitle files. Nothing locked inside.</p>
+      </div>
+    </section>
+
+    <!-- ================= BUILT WITH ================= -->
+    <section class="tech">
+      <div class="col">
+        <div class="l">Languages &amp; frameworks</div>
+        <div class="v">Python <span>·</span> FastAPI <span>·</span> JavaScript
+                       <span>·</span> HTML &amp; CSS <span>·</span> SQL</div>
+      </div>
+      <div class="col">
+        <div class="l">Speech, language &amp; media</div>
+        <div class="v">AssemblyAI <span>·</span> OpenAI GPT <span>·</span> FFmpeg
+                       <span>·</span> KaTeX</div>
+      </div>
+      <div class="col">
+        <div class="l">Data, platform &amp; output</div>
+        <div class="v">SQLModel <span>·</span> Cloudflare R2 <span>·</span> Vercel
+                       <span>·</span> fpdf2 <span>·</span> python-docx</div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="qr"><img src="img/qr.svg" alt="QR code to the project"></div>
+    <div class="c">
+      <div class="l">Get in touch</div>
+      <div class="v"><b>Adi Tapiero</b> adita3@mta.ac.il<br>
+                     <b>Matan Gurfinkel</b> matangu@mta.ac.il</div>
+    </div>
+    <div class="sign">Built for one student.<br>Useful for every student.</div>
+  </footer>
+
+</div>
+</body>
+</html>

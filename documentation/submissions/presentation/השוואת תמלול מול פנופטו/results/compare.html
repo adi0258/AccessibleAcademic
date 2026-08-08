@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accessible Academic vs Panopto</title>
+<style>
+@font-face{
+  font-family:'HeeboEmbed';
+  src:url(data:font/ttf;base64,__HEEBO__) format('truetype');
+  font-weight:100 900; font-display:block;
+}
+@page{ size:700mm 1000mm; margin:0; }
+*{ box-sizing:border-box; margin:0; padding:0; }
+:root{
+  --ink:#14181F; --ink-2:#39434F; --ink-3:#6E7885;
+  --rule:#CFCABF; --paper:#FBFAF7; --panel:#F2F0EA;
+  --teal:#0E5E52; --teal-lite:#E4EEEC;
+  --red:#A3301B; --red-lite:#F7E9E5;
+}
+html,body{ background:#8A8A8A; }
+body{ font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:var(--ink);
+      -webkit-font-smoothing:antialiased; font-kerning:normal; }
+.he{ font-family:'HeeboEmbed','Arial Hebrew',Arial,sans-serif; direction:rtl; }
+.sheet{ width:700mm; height:1000mm; background:var(--paper); padding:15mm;
+        display:flex; flex-direction:column; overflow:hidden; }
+
+/* header — 10 cm band per the exhibition spec */
+header{ height:85mm; flex:0 0 auto; display:flex; flex-direction:column; justify-content:space-between; }
+.masthead{ display:flex; align-items:center; gap:9mm; flex:1 1 auto; }
+.crest{ flex:0 0 auto; display:flex; align-items:center; justify-content:center; }
+.crest img{ width:100%; height:100%; object-fit:contain; }
+.crest.college{ width:76mm; height:38.2mm; }
+.crest.project{ width:42mm; height:42mm; }
+h1{ font-size:27mm; line-height:.94; font-weight:700; letter-spacing:-.7mm; }
+h1 .thin{ font-weight:200; }
+.byline{ margin-top:4.5mm; display:flex; }
+.byline .grp{ padding-right:8mm; margin-right:8mm; border-right:.35mm solid var(--rule); }
+.byline .grp:last-child{ border-right:0; }
+.byline .lbl{ display:block; font-size:4mm; font-weight:700; letter-spacing:.5mm;
+              text-transform:uppercase; color:var(--teal); margin-bottom:1.4mm; }
+.byline .val{ font-size:6.6mm; font-weight:600; }
+.affil{ border-top:.35mm solid var(--rule); border-bottom:1.2mm solid var(--ink);
+        padding:2.6mm 0 3mm; display:flex; justify-content:space-between;
+        font-size:5.4mm; color:var(--ink-2); }
+.affil b{ color:var(--ink); font-weight:700; }
+
+main{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column;
+      justify-content:space-between; padding-top:10mm; padding-bottom:2mm; }
+
+/* headline */
+.hero h2{ font-size:31mm; line-height:1.04; font-weight:700; letter-spacing:-.55mm; }
+.hero h2 .bad{ color:var(--red); }
+.hero h2 .good{ color:var(--teal); }
+.hero p{ margin-top:7mm; font-size:12.5mm; line-height:1.3; color:var(--ink-2); font-weight:300; }
+
+/* scoreboard */
+.score{ display:flex; gap:9mm; align-items:stretch; }
+.card{ flex:1 1 0; border-radius:2mm; padding:9mm 10mm; }
+.card.them{ background:var(--panel); }
+.card.us{ background:var(--ink); color:#F4F2ED; }
+.card .who{ font-size:6.4mm; font-weight:700; letter-spacing:.5mm; text-transform:uppercase; }
+.card.them .who{ color:var(--ink-3); }
+.card.us .who{ color:#7FC4B6; }
+.card .big{ font-size:44mm; line-height:.92; font-weight:700; letter-spacing:-1.6mm; margin-top:3mm; }
+.card.them .big{ color:var(--red); }
+.card.us .big{ color:#fff; }
+.card .unit{ font-size:9mm; font-weight:600; letter-spacing:-.2mm; }
+.card .sub{ margin-top:4mm; font-size:6.2mm; line-height:1.35; }
+.card.them .sub{ color:var(--ink-3); }
+.card.us .sub{ color:#BFC9C6; }
+.delta{ flex:0 0 132mm; background:var(--teal); color:#fff; border-radius:2mm;
+        padding:9mm 8mm; display:flex; flex-direction:column; justify-content:center; }
+.delta .n{ font-size:30mm; line-height:.94; font-weight:700; letter-spacing:-1mm; }
+.delta .t{ margin-top:4mm; font-size:6.4mm; line-height:1.32; color:#D3E7E2; }
+
+/* chart */
+.chart-head{ display:flex; align-items:baseline; gap:6mm;
+  border-bottom:.9mm solid var(--ink); padding-bottom:3mm; margin-bottom:6mm; }
+.chart-head h3{ font-size:19mm; font-weight:700; letter-spacing:-.2mm; }
+.chart-head .key{ margin-left:auto; display:flex; gap:9mm; font-size:7.5mm; font-weight:600; }
+.chart-head .key i{ display:inline-block; width:7mm; height:4mm; border-radius:.8mm;
+  margin-right:2.4mm; vertical-align:-.4mm; }
+.chart img{ width:100%; display:block; }
+
+/* evidence */
+.ev-head{ display:flex; align-items:baseline; gap:6mm;
+          border-bottom:.9mm solid var(--ink); padding-bottom:3mm; margin-bottom:7mm; }
+.ev-head h3{ font-size:19mm; font-weight:700; letter-spacing:-.2mm; }
+.ev-head .note{ margin-left:auto; font-size:7.5mm; color:var(--ink-3); }
+
+.ev{ margin-bottom:11mm; }
+.ev .stamp{ display:flex; align-items:baseline; gap:5mm; margin-bottom:4mm; }
+.ev .tc{ font-family:Menlo,Consolas,monospace; font-size:8mm; font-weight:700; color:var(--teal); }
+.ev .what{ font-size:8mm; color:var(--ink-3); }
+.line{ display:flex; align-items:flex-start; gap:7mm; padding:5mm 0; }
+.line + .line{ border-top:.35mm solid var(--rule); }
+.line .tag{ flex:0 0 72mm; font-size:6.4mm; font-weight:700; letter-spacing:.3mm;
+            text-transform:uppercase; padding-top:1mm; }
+.line.them .tag{ color:var(--red); }
+.line.us   .tag{ color:var(--teal); }
+.line.ref  .tag{ color:var(--ink-3); }
+.line .txt{ flex:1 1 auto; font-family:'HeeboEmbed','Arial Hebrew',Arial,sans-serif;
+            direction:rtl; text-align:right; font-size:8.6mm; line-height:1.44; }
+.line.ref .txt{ color:var(--ink-3); }
+mark.bad{ background:var(--red-lite); color:var(--red); font-weight:700;
+          padding:.4mm 1.2mm; border-radius:.8mm; }
+mark.good{ background:var(--teal-lite); color:var(--teal); font-weight:700;
+           padding:.4mm 1.2mm; border-radius:.8mm; }
+
+/* terminology */
+.terms{ display:flex; gap:9mm; }
+.term{ flex:1 1 0; border-top:1.2mm solid var(--ink); padding-top:4.5mm; }
+.term h4{ font-size:8.6mm; font-weight:700; margin-bottom:3mm; }
+.term .row{ display:flex; justify-content:space-between; align-items:baseline;
+            padding:2.4mm 0; border-bottom:.35mm solid var(--rule); font-size:6.2mm; }
+.term .row:last-child{ border-bottom:0; }
+.term .row .v{ font-weight:700; font-size:8mm; }
+.term .row .v.bad{ color:var(--red); }
+.term .row .v.good{ color:var(--teal); }
+.term p{ margin-top:3.4mm; font-size:5.4mm; line-height:1.36; color:var(--ink-3); }
+
+footer{ border-top:1.2mm solid var(--ink); padding-top:6mm; display:flex; gap:10mm; align-items:flex-start; }
+footer .method{ flex:1 1 auto; font-size:5.6mm; line-height:1.44; color:var(--ink-3); }
+footer .method b{ color:var(--ink-2); }
+footer .sign{ flex:0 0 250mm; text-align:right; font-size:11mm; line-height:1.24;
+              font-weight:600; color:var(--teal); }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <header>
+    <div class="masthead">
+      <div class="crest college"><img src="img/mta-logo.svg" alt="The Academic College of Tel Aviv-Yaffo"></div>
+      <div style="flex:1 1 auto">
+        <h1>Accessible <span class="thin">Academic</span></h1>
+        <div class="byline">
+          <div class="grp"><span class="lbl">Team</span>
+            <span class="val">Adi Tapiero &nbsp;·&nbsp; Matan Gurfinkel</span></div>
+          <div class="grp"><span class="lbl">Academic mentor</span>
+            <span class="val">Dror Margalit</span></div>
+          <div class="grp"><span class="lbl">Project no.</span>
+            <span class="val">15002930</span></div>
+        </div>
+      </div>
+      <div class="crest project"><img src="img/project-logo.png" alt="Accessible Academic logo"></div>
+    </div>
+    <div class="affil">
+      <div><b>The Academic College of Tel Aviv&ndash;Yaffo</b> &nbsp;·&nbsp; School of Computer Science</div>
+      <div>Head-to-head evaluation against Panopto</div>
+    </div>
+  </header>
+
+  <main>
+
+    <section class="hero">
+      <h2>Panopto heard <span class="bad">&ldquo;Jerusalem police&rdquo;.</span><br>
+          We heard <span class="good">&ldquo;vertex cover&rdquo;.</span></h2>
+      <p>One 2-hour-13-minute algorithms lecture. The same audio through both engines,
+         scored against an independent third transcriber.</p>
+    </section>
+
+    <section class="chart">
+      <div class="chart-head">
+        <h3>Every passage, side by side</h3>
+        <div class="key">
+          <span><i style="background:#A3301B"></i>Panopto</span>
+          <span><i style="background:#0E5E52"></i>Accessible Academic</span>
+        </div>
+      </div>
+      <img src="img/wer-chart.svg" alt="Word error rate per sampled passage">
+    </section>
+
+    <section>
+      <div class="ev-head">
+        <h3>Where Panopto breaks</h3>
+        <div class="note">Verified against the independent transcript</div>
+      </div>
+
+      <div class="ev">
+        <div class="stamp">
+          <span class="tc">00:52</span>
+          <span class="what">Mathematical notation &mdash; the lecturer defines the input graph <i>G = (V, E)</i></span>
+        </div>
+        <div class="line ref"><div class="tag">Reference</div>
+          <div class="txt">…בקלט הוא גרף מכוון <mark class="good">G שווה VE</mark>, והמטרה למצוא קבוצת קשתות גדולה ככל האפשר…</div></div>
+        <div class="line them"><div class="tag">Panopto</div>
+          <div class="txt">…הוא גרף מכוון <mark class="bad">give</mark> והמטרה למצוא קבוצת קשתות גדולה ככל האפשר…</div></div>
+        <div class="line us"><div class="tag">Accessible Academic</div>
+          <div class="txt">…הוא גרף מכוון <mark class="good">G שווה VE</mark>, והמטרה למצוא קבוצת קשתות, גדולה ככל האפשר…</div></div>
+      </div>
+
+      <div class="ev">
+        <div class="stamp">
+          <span class="tc">52:48</span>
+          <span class="what">Context collapse &mdash; the lecturer recaps the 2-approximation for vertex cover</span>
+        </div>
+        <div class="line ref"><div class="tag">Reference</div>
+          <div class="txt">…ראינו אלגוריתם <mark class="good">קירוב</mark>… <mark class="good">קירוב 2</mark> ל<mark class="good">ברטקס</mark> [קאבר]…</div></div>
+        <div class="line them"><div class="tag">Panopto</div>
+          <div class="txt">רציתי להגיד שאני אעשה כל מה שעושה לי טוב, מושלם, כמו שאני יודעת שאני <mark class="bad">משטרת ירושלים</mark>… ראינו אלגוריתם <mark class="bad">קירור</mark> בארץ <mark class="bad">קירור לוורדפרס</mark>…</div></div>
+        <div class="line us"><div class="tag">Accessible Academic</div>
+          <div class="txt">…שנעשה <mark class="good">קירוב</mark> אלגוריתם של <mark class="good">ורטקסט חברה</mark> … של <mark class="good">קירוב שתיים</mark>… ראינו אלגוריתם <mark class="good">קירוב</mark> בארץ <mark class="good">קירוב שתיים וורטקסט חברה</mark>…</div></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="method">
+      <b>Method.</b> Both transcripts cover the same 2:12:44 recording. Neither is ground truth, so both were scored against a third, independent engine (Whisper large-v3-turbo, run locally) over ten passages sampled evenly across the lecture. Windows are snapped to Panopto&rsquo;s own segment boundaries so all three transcripts describe exactly the same audio. The reference has its own errors, which affect both systems alike and favour neither.
+    </div>
+    <div class="sign">Better where it counts:<br>the words that carry the meaning.</div>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -2,7 +2,7 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="FacetManager">
     <facet type="Python" name="Python facet">
-      <configuration sdkName="Python 3.14 (AccessibleAcademicBackend)" />
+      <configuration sdkName="Python 3.14 virtualenv at ~/PycharmProjects/AccessibleAcademicBackend/.venv" />
     </facet>
   </component>
   <component name="NewModuleRootManager">
@@ -12,6 +12,6 @@
     </content>
     <orderEntry type="jdk" jdkName="Python 3.14 (AccessibleAcademicBackend)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="Python 3.14 (AccessibleAcademicBackend) interpreter library" level="application" />
+    <orderEntry type="library" name="Python 3.14 virtualenv at ~/PycharmProjects/AccessibleAcademicBackend/.venv interpreter library" level="application" />
   </component>
 </module>
