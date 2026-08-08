@@ -1,3 +1,4 @@
+import os
 import secrets
 
 from dotenv import load_dotenv
@@ -32,7 +33,15 @@ def create_app() -> FastAPI:
     # Signs the login session cookie. Falls back to a random per-process key so
     # local dev works with zero setup — every restart just logs users out.
     session_secret = SESSION_SECRET_KEY or secrets.token_urlsafe(32)
-    app.add_middleware(SessionMiddleware, secret_key=session_secret, same_site="lax")
+    # Vercel is always HTTPS; local dev (http://localhost) is not — mark the
+    # cookie Secure only where it will actually be sent over HTTPS.
+    is_https_env = os.environ.get("VERCEL") == "1"
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=session_secret,
+        same_site="lax",
+        https_only=is_https_env,
+    )
 
     app.mount("/static", StaticFiles(directory=str(RECORDINGS_DIR)), name="static")
     if ASSETS_DIR.exists():
