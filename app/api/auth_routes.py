@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlmodel import Session
 
@@ -29,7 +29,12 @@ async def auth_callback(request: Request, session: Session = Depends(get_session
         userinfo = await oauth.google.parse_id_token(request, token)
     user = get_or_create_user(session, userinfo)
     request.session["user_id"] = user.id
-    return RedirectResponse(url="/")
+    # 303 (not the default 307) so the browser treats this as a fresh GET
+    # navigation, and no-store so no cache layer replays a pre-login copy of
+    # this redirect — either can make the first sign-in appear not to stick.
+    response = RedirectResponse(url="/", status_code=303)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.post("/logout")
@@ -39,5 +44,8 @@ def logout(request: Request):
 
 
 @router.get("/me")
-def me(user=Depends(get_current_user)):
+def me(response: Response, user=Depends(get_current_user)):
+    # Never cache auth state — a cached pre-login 401 would make a freshly
+    # signed-in user still look signed out.
+    response.headers["Cache-Control"] = "no-store"
     return {"id": user.id, "email": user.email, "name": user.name, "picture": user.picture}
