@@ -158,8 +158,8 @@ footer .sign{ flex:0 0 250mm; text-align:right; font-size:11mm; line-height:1.24
     <section class="hero">
       <h2>Panopto heard <span class="bad">&ldquo;Jerusalem police&rdquo;.</span><br>
           We heard <span class="good">&ldquo;vertex cover&rdquo;.</span></h2>
-      <p>One 2-hour-13-minute algorithms lecture. The same audio through both engines,
-         scored against an independent third transcriber.</p>
+      <p>One 2-hour-13-minute algorithms lecture. The same audio through three engines
+         &mdash; Panopto, OpenAI&rsquo;s Whisper, and ours &mdash; compared second by second.</p>
     </section>
 
     <section class="chart">
@@ -168,6 +168,7 @@ footer .sign{ flex:0 0 250mm; text-align:right; font-size:11mm; line-height:1.24
         <div class="key">
           <span><i style="background:#A3301B"></i>Panopto</span>
           <span><i style="background:#0E5E52"></i>Accessible Academic</span>
+          <span style="color:var(--ink-3); font-weight:400">&mdash; error rate vs Whisper</span>
         </div>
       </div>
       <img src="img/wer-chart.svg" alt="Word error rate per sampled passage">
@@ -175,8 +176,8 @@ footer .sign{ flex:0 0 250mm; text-align:right; font-size:11mm; line-height:1.24
 
     <section>
       <div class="ev-head">
-        <h3>Where Panopto breaks</h3>
-        <div class="note">Verified against the independent transcript</div>
+        <h3>Three engines, the same seconds</h3>
+        <div class="note">Same audio, word for word &mdash; judge for yourself</div>
       </div>
 
       <div class="ev">
@@ -184,7 +185,7 @@ footer .sign{ flex:0 0 250mm; text-align:right; font-size:11mm; line-height:1.24
           <span class="tc">00:52</span>
           <span class="what">Mathematical notation &mdash; the lecturer defines the input graph <i>G = (V, E)</i></span>
         </div>
-        <div class="line ref"><div class="tag">Reference</div>
+        <div class="line wh"><div class="tag">Whisper</div>
           <div class="txt">…בקלט הוא גרף מכוון <mark class="good">G שווה VE</mark>, והמטרה למצוא קבוצת קשתות גדולה ככל האפשר…</div></div>
         <div class="line them"><div class="tag">Panopto</div>
           <div class="txt">…הוא גרף מכוון <mark class="bad">give</mark> והמטרה למצוא קבוצת קשתות גדולה ככל האפשר…</div></div>
@@ -197,43 +198,35 @@ footer .sign{ flex:0 0 250mm; text-align:right; font-size:11mm; line-height:1.24
           <span class="tc">52:48</span>
           <span class="what">Context collapse &mdash; the lecturer recaps the 2-approximation for vertex cover</span>
         </div>
-        <div class="line ref"><div class="tag">Reference</div>
+        <div class="line wh"><div class="tag">Whisper</div>
           <div class="txt">…ראינו אלגוריתם <mark class="good">קירוב</mark>… <mark class="good">קירוב 2</mark> ל<mark class="good">ברטקס</mark> [קאבר]…</div></div>
         <div class="line them"><div class="tag">Panopto</div>
           <div class="txt">רציתי להגיד שאני אעשה כל מה שעושה לי טוב, מושלם, כמו שאני יודעת שאני <mark class="bad">משטרת ירושלים</mark>… ראינו אלגוריתם <mark class="bad">קירור</mark> בארץ <mark class="bad">קירור לוורדפרס</mark>…</div></div>
         <div class="line us"><div class="tag">Accessible Academic</div>
           <div class="txt">…שנעשה <mark class="good">קירוב</mark> אלגוריתם של <mark class="good">ורטקסט חברה</mark> … של <mark class="good">קירוב שתיים</mark>… ראינו אלגוריתם <mark class="good">קירוב</mark> בארץ <mark class="good">קירוב שתיים וורטקסט חברה</mark>…</div></div>
       </div>
-    </section>
 
-
-    <section>
-      <div class="ev-head">
-        <h3>Also tested against Whisper</h3>
-        <div class="note">Same recording, OpenAI&rsquo;s own speech model</div>
-      </div>
-      <p style="font-size:6.6mm; line-height:1.4; color:var(--ink-2); font-weight:300; margin-bottom:6mm; max-width:640mm">
-        On ordinary passages the two transcripts are nearly identical. In the single
-        hardest passage in the lecture &mdash; overlapping questions from the audience &mdash;
-        ours stays readable where Whisper&rsquo;s own transcript breaks into noise.
-      </p>
       <div class="ev">
         <div class="stamp">
-          <span class="tc">98:32</span>
-          <span class="what">A student asks about linear-time complexity</span>
+          <span class="tc">98:47</span>
+          <span class="what">A student asks whether the check runs in linear time</span>
         </div>
         <div class="line wh"><div class="tag">Whisper</div>
-          <div class="txt">…לא בזמן לינארים. <mark class="odd">תצודק אותו</mark>. בסדר? <mark class="odd">להיברילות</mark>…</div></div>
+          <div class="txt">…לא בזמן לינארים. <mark class="bad">תצודק אותו</mark>. בסדר? <mark class="bad">להיברילות</mark>…</div></div>
+        <div class="line them"><div class="tag">Panopto</div>
+          <div class="txt">…אנו צריכים להתייחס <mark class="bad">לניטור הזמן</mark>. <mark class="bad">נמצא ההשפעה</mark> בין החתכים. זה דורש <mark class="bad">טיפול</mark> לעבור על כל הקשתות… כן, זה קורה <mark class="good">בזמן ליניארי</mark>. צודק…</div></div>
         <div class="line us"><div class="tag">Accessible Academic</div>
           <div class="txt">…בסדר להגיד שזה קורה <mark class="good">בזמן לינארי</mark>. כן, זה קורה בזמן לינארי, <mark class="good">צודק</mark>. בסדר?…</div></div>
       </div>
     </section>
 
+
+
   </main>
 
   <footer>
     <div class="method">
-      <b>Method.</b> Both transcripts cover the same 2:12:44 recording. Neither is ground truth, so both were scored against a third, independent engine (Whisper large-v3-turbo, run locally) over ten passages sampled evenly across the lecture. Windows are snapped to Panopto&rsquo;s own segment boundaries so all three transcripts describe exactly the same audio. The reference has its own errors, which affect both systems alike and favour neither.
+      <b>Method.</b> All three transcripts cover the same 2:12:44 recording. No transcript is ground truth: the bar chart scores Panopto and Accessible Academic against Whisper large-v3-turbo (run locally) over ten passages sampled evenly across the lecture, and the text panels show all three engines verbatim at the same timestamps so the reader can judge directly. Windows are snapped to Panopto&rsquo;s own segment boundaries so every engine describes exactly the same audio.
     </div>
     <div class="sign">Better where it counts:<br>the words that carry the meaning.</div>
   </footer>
