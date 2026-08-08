@@ -3,7 +3,7 @@ from collections.abc import Generator
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.core.config import DATABASE_URL
-from app.models import Lecture
+from app.models import Lecture, User
 
 
 _connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
@@ -17,7 +17,7 @@ def get_session() -> Generator[Session, None, None]:
 
 def create_db_and_tables() -> None:
     # Import keeps SQLModel metadata registered before create_all runs.
-    _ = Lecture
+    _ = Lecture, User
     SQLModel.metadata.create_all(engine)
 
     # SQLite only: add columns that may be missing in older local databases.
@@ -31,6 +31,7 @@ def create_db_and_tables() -> None:
                 ("processing_stage", "TEXT"),
                 ("progress_percent", "INTEGER"),
                 ("validation_json", "TEXT"),
+                ("user_id", "INTEGER"),
             ]:
                 if col not in cols:
                     conn.execute(text(f"ALTER TABLE lecture ADD COLUMN {col} {spec}"))

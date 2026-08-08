@@ -106,6 +106,8 @@ mark.bad{ background:var(--red-lite); color:var(--red); font-weight:700;
           padding:.4mm 1.2mm; border-radius:.8mm; }
 mark.good{ background:var(--teal-lite); color:var(--teal); font-weight:700;
            padding:.4mm 1.2mm; border-radius:.8mm; }
+mark.odd{ background:#EFEDE7; color:#6E7885; font-style:italic; font-weight:600;
+          padding:.4mm 1.2mm; border-radius:.8mm; }
 
 /* terminology */
 .terms{ display:flex; gap:9mm; }
@@ -201,6 +203,29 @@ footer .sign{ flex:0 0 250mm; text-align:right; font-size:11mm; line-height:1.24
           <div class="txt">רציתי להגיד שאני אעשה כל מה שעושה לי טוב, מושלם, כמו שאני יודעת שאני <mark class="bad">משטרת ירושלים</mark>… ראינו אלגוריתם <mark class="bad">קירור</mark> בארץ <mark class="bad">קירור לוורדפרס</mark>…</div></div>
         <div class="line us"><div class="tag">Accessible Academic</div>
           <div class="txt">…שנעשה <mark class="good">קירוב</mark> אלגוריתם של <mark class="good">ורטקסט חברה</mark> … של <mark class="good">קירוב שתיים</mark>… ראינו אלגוריתם <mark class="good">קירוב</mark> בארץ <mark class="good">קירוב שתיים וורטקסט חברה</mark>…</div></div>
+      </div>
+    </section>
+
+
+    <section>
+      <div class="ev-head">
+        <h3>Also tested against Whisper</h3>
+        <div class="note">Same recording, OpenAI&rsquo;s own speech model</div>
+      </div>
+      <p style="font-size:6.6mm; line-height:1.4; color:var(--ink-2); font-weight:300; margin-bottom:6mm; max-width:640mm">
+        On ordinary passages the two transcripts are nearly identical. In the single
+        hardest passage in the lecture &mdash; overlapping questions from the audience &mdash;
+        ours stays readable where Whisper&rsquo;s own transcript breaks into noise.
+      </p>
+      <div class="ev">
+        <div class="stamp">
+          <span class="tc">98:32</span>
+          <span class="what">A student asks about linear-time complexity</span>
+        </div>
+        <div class="line wh"><div class="tag">Whisper</div>
+          <div class="txt">…לא בזמן לינארים. <mark class="odd">תצודק אותו</mark>. בסדר? <mark class="odd">להיברילות</mark>…</div></div>
+        <div class="line us"><div class="tag">Accessible Academic</div>
+          <div class="txt">…בסדר להגיד שזה קורה <mark class="good">בזמן לינארי</mark>. כן, זה קורה בזמן לינארי, <mark class="good">צודק</mark>. בסדר?…</div></div>
       </div>
     </section>
 

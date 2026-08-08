@@ -5,6 +5,7 @@ from sqlmodel import Field, SQLModel
 
 class Lecture(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
     title: str
     filename: str
     status: str

@@ -6,7 +6,8 @@ from sqlmodel import Session, select
 
 from app.core.config import RECORDINGS_DIR
 from app.core.database import get_session
-from app.models import Lecture
+from app.models import Lecture, User
+from app.services.auth_service import get_current_user
 from app.services.blob_service import delete_blob, generate_client_upload_token
 from app.services.pdf_service import export_lecture_pdf
 from app.services.pipeline_service import run_full_pipeline
@@ -17,8 +18,17 @@ from app.services.word_service import export_lecture_docx
 router = APIRouter()
 
 
+def _get_owned_lecture(lecture_id: int, session: Session, user: User) -> Lecture:
+    """Fetch a lecture, 404-ing (not 403) if it doesn't belong to the caller —
+    ownership shouldn't be distinguishable from non-existence to other users."""
+    lecture = session.get(Lecture, lecture_id)
+    if not lecture or lecture.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+    return lecture
+
+
 @router.post("/upload")
-def upload_audio(file: UploadFile = File(...)):
+def upload_audio(file: UploadFile = File(...), user: User = Depends(get_current_user)):
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename")
 
@@ -36,7 +46,7 @@ def upload_audio(file: UploadFile = File(...)):
 
 
 @router.get("/upload-token")
-def get_upload_token(filename: str):
+def get_upload_token(filename: str, user: User = Depends(get_current_user)):
     try:
         return generate_client_upload_token(filename)
     except ValueError as e:
@@ -48,6 +58,7 @@ def process_lecture(
     title: str,
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
     filename: str = "",
     blob_url: str = "",
 ):
@@ -69,6 +80,7 @@ def process_lecture(
         status="processing",
         processing_stage="pending",
         progress_percent=0,
+        user_id=user.id,
     )
     session.add(new_lecture)
     session.commit()
@@ -97,23 +109,18 @@ def debug_env():
 
 
 @router.get("/lectures", response_model=List[Lecture])
-def get_all_lectures(session: Session = Depends(get_session)):
-    return session.exec(select(Lecture)).all()
+def get_all_lectures(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    return session.exec(select(Lecture).where(Lecture.user_id == user.id)).all()
 
 
 @router.get("/lectures/{lecture_id}", response_model=Lecture)
-def get_lecture(lecture_id: int, session: Session = Depends(get_session)):
-    lecture = session.get(Lecture, lecture_id)
-    if not lecture:
-        raise HTTPException(status_code=404, detail="Lecture not found")
-    return lecture
+def get_lecture(lecture_id: int, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    return _get_owned_lecture(lecture_id, session, user)
 
 
 @router.delete("/lectures/{lecture_id}")
-def delete_lecture(lecture_id: int, session: Session = Depends(get_session)):
-    lecture = session.get(Lecture, lecture_id)
-    if not lecture:
-        raise HTTPException(status_code=404, detail="Lecture not found")
+def delete_lecture(lecture_id: int, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    lecture = _get_owned_lecture(lecture_id, session, user)
     # Clean up blob storage if the filename is a remote URL
     if lecture.filename and lecture.filename.startswith("http"):
         delete_blob(lecture.filename)
@@ -123,37 +130,40 @@ def delete_lecture(lecture_id: int, session: Session = Depends(get_session)):
 
 
 @router.get("/lectures/{lecture_id}/export")
-def export_lecture(lecture_id: int, session: Session = Depends(get_session)):
+def export_lecture(lecture_id: int, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    _get_owned_lecture(lecture_id, session, user)
     return export_lecture_pdf(lecture_id, session)
 
 
 @router.get("/lectures/{lecture_id}/export-docx")
-def export_lecture_docx_file(lecture_id: int, session: Session = Depends(get_session)):
+def export_lecture_docx_file(lecture_id: int, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    _get_owned_lecture(lecture_id, session, user)
     return export_lecture_docx(lecture_id, session)
 
 
 @router.get("/lectures/{lecture_id}/export-srt")
-def export_lecture_subtitles(lecture_id: int, session: Session = Depends(get_session)):
+def export_lecture_subtitles(lecture_id: int, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    _get_owned_lecture(lecture_id, session, user)
     return export_lecture_srt(lecture_id, session)
 
 
 @router.get("/lectures/{lecture_id}/export-vtt")
-def export_lecture_subtitles_vtt(lecture_id: int, session: Session = Depends(get_session)):
+def export_lecture_subtitles_vtt(lecture_id: int, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    _get_owned_lecture(lecture_id, session, user)
     return export_lecture_vtt(lecture_id, session)
 
 
 @router.get("/lectures/{lecture_id}/export-vvt")
-def export_lecture_subtitles_vvt_alias(lecture_id: int, session: Session = Depends(get_session)):
+def export_lecture_subtitles_vvt_alias(lecture_id: int, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     # Backward-compatible alias for common typo ("vvt" instead of "vtt")
+    _get_owned_lecture(lecture_id, session, user)
     return export_lecture_vtt(lecture_id, session)
 
 
 @router.get("/lectures/{lecture_id}/validation")
-def get_lecture_validation(lecture_id: int, session: Session = Depends(get_session)):
+def get_lecture_validation(lecture_id: int, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     """Return the grounding validation report for a lecture."""
-    lecture = session.get(Lecture, lecture_id)
-    if not lecture:
-        raise HTTPException(status_code=404, detail="Lecture not found")
+    lecture = _get_owned_lecture(lecture_id, session, user)
     if not lecture.validation_json:
         raise HTTPException(status_code=404, detail="Validation report not available for this lecture")
     import json as _json

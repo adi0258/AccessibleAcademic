@@ -6,7 +6,10 @@
     },
     "common": {
       "appName": "Accessible Academic",
-      "tagline": "Listen, summarize, succeed"
+      "tagline": "Listen, summarize, succeed",
+      "signIn": "Sign in with Google",
+      "signOut": "Sign out",
+      "signedOutBody": "Sign in with Google to upload and view your lectures."
     },
     "index": {
       "pageTitle": "Accessible Academic",
@@ -75,7 +78,10 @@
     },
     "common": {
       "appName": "Accessible Academic",
-      "tagline": "להקשיב, לסכם, להצליח"
+      "tagline": "להקשיב, לסכם, להצליח",
+      "signIn": "התחברות עם Google",
+      "signOut": "התנתקות",
+      "signedOutBody": "התחברו עם Google כדי להעלות ולצפות בהרצאות שלכם."
     },
     "index": {
       "pageTitle": "Accessible Academic",
