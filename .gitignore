@@ -41,3 +41,8 @@ Thumbs.db
 *.otf
 !assets/fonts/Heebo-VariableFont_wght.ttf
 .vercel
+
+# Large source media (comparisons, demos) — never commit raw video
+*.mp4
+*.mov
+*.mkv
