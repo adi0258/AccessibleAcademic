@@ -11,4 +11,5 @@ python-multipart
 python-docx
 psycopg2-binary
 authlib
+httpx
 itsdangerous
