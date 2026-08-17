@@ -14,9 +14,18 @@ name: Panopto pilot sync
 #
 # GitHub does not guarantee schedule triggers fire exactly on time — expect
 # some jitter, especially during periods of high platform load.
+#
+# Known GitHub platform quirk, hit for real on 2026-08-17: a scheduled
+# workflow can fire once and then go silent for an extended stretch with no
+# error anywhere — not a config problem, a stuck internal registration.
+# GitHub's own fix is "push any commit to the default branch to resync it."
+# Also offset off :00/:05/:10 (the marks every other repo's cron also
+# targets) rather than exactly on them — GitHub's docs flag round-number
+# marks, especially the top of the hour, as the most congested and most
+# likely to get a schedule tick delayed or dropped.
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "2-59/5 * * * *"
   workflow_dispatch: {} # lets you trigger a run by hand from the Actions tab
 
 jobs:
