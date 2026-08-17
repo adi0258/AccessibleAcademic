@@ -21,6 +21,7 @@ since Panopto can't replace an existing caption track via this API.
 import os
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 import requests
@@ -36,13 +37,10 @@ from app.core.config import (
     PANOPTO_REFRESH_TOKEN,
     RECORDINGS_DIR,
 )
-from app.models import Lecture
+from app.core.database import engine
+from app.models import Lecture, PanoptoToken
 
 _token_cache = {"value": None, "expires_at": 0.0}
-# A rotated refresh token (Panopto may issue a new one on each use) — checked
-# after PANOPTO_REFRESH_TOKEN so a live rotation doesn't require an app restart.
-# Still only lives in memory; see get_access_token()'s note about .env.
-_rotated_refresh_token = {"value": None}
 
 
 class PanoptoNotConfigured(RuntimeError):
@@ -61,21 +59,49 @@ def _require_config() -> None:
         )
 
 
+def _load_stored_refresh_token() -> Optional[str]:
+    with Session(engine) as db:
+        row = db.exec(select(PanoptoToken).order_by(PanoptoToken.id.desc())).first()
+        return row.refresh_token if row else None
+
+
+def _save_refresh_token(token: str) -> None:
+    with Session(engine) as db:
+        row = db.exec(select(PanoptoToken)).first()
+        if row:
+            row.refresh_token = token
+        else:
+            row = PanoptoToken(refresh_token=token, updated_at="")
+        row.updated_at = datetime.now(timezone.utc).isoformat()
+        db.add(row)
+        db.commit()
+
+
 def get_access_token(force_refresh: bool = False) -> str:
     """Access token, cached until ~60s before expiry.
 
     Uses the refresh-token grant (acts as the admin who completed the
-    one-time browser consent — see get_authorize_url / exchange_code) when
-    PANOPTO_REFRESH_TOKEN is set; falls back to plain Client Credentials
-    (no user identity — fine for reads, refused for editing captions)
-    otherwise. See config.py for why both exist.
+    one-time browser consent — see get_authorize_url / exchange_code) when a
+    refresh token is available; falls back to plain Client Credentials (no
+    user identity — fine for reads, refused for editing captions) otherwise.
+    See config.py for why both grant types exist.
+
+    The refresh token itself comes from the database first (PanoptoToken,
+    single row), falling back to PANOPTO_REFRESH_TOKEN only if the database
+    has never seen one — that env var is a one-time seed, not the ongoing
+    source of truth. This matters because Panopto rotates the refresh token
+    on every use: two processes reading the same static env var (e.g. local
+    testing and the deployed app) will invalidate each other's copy the
+    moment either one calls this. Reading/writing through each environment's
+    own database — which local dev and production don't share — keeps each
+    one self-consistent regardless of what happens in the other.
     """
     _require_config()
     now = time.time()
     if not force_refresh and _token_cache["value"] and now < _token_cache["expires_at"]:
         return _token_cache["value"]
 
-    refresh_token = _rotated_refresh_token["value"] or PANOPTO_REFRESH_TOKEN
+    refresh_token = _load_stored_refresh_token() or PANOPTO_REFRESH_TOKEN
     if refresh_token:
         data = {"grant_type": "refresh_token", "refresh_token": refresh_token}
     else:
@@ -95,13 +121,7 @@ def get_access_token(force_refresh: bool = False) -> str:
 
     new_refresh = payload.get("refresh_token")
     if new_refresh and new_refresh != refresh_token:
-        # Panopto rotated it — keep using the new one for the rest of this
-        # process, but .env still has the old one, so flag it loudly.
-        _rotated_refresh_token["value"] = new_refresh
-        print(
-            "Panopto issued a new refresh_token (rotation). Update PANOPTO_REFRESH_TOKEN "
-            f"in .env to keep working after this process restarts: {new_refresh}"
-        )
+        _save_refresh_token(new_refresh)
     return _token_cache["value"]
 
 

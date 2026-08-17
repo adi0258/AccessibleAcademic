@@ -3,7 +3,7 @@ from collections.abc import Generator
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.core.config import DATABASE_URL
-from app.models import Lecture, User
+from app.models import Lecture, PanoptoToken, User
 
 
 _connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
@@ -17,7 +17,7 @@ def get_session() -> Generator[Session, None, None]:
 
 def create_db_and_tables() -> None:
     # Import keeps SQLModel metadata registered before create_all runs.
-    _ = Lecture, User
+    _ = Lecture, PanoptoToken, User
     SQLModel.metadata.create_all(engine)
 
     # Add columns that may be missing on a database created before they

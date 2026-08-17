@@ -12,6 +12,7 @@ from app.services.auth_service import get_current_user, get_current_user_optiona
 from app.services.panopto_service import (
     PanoptoAPIError,
     PanoptoNotConfigured,
+    _save_refresh_token,
     discover_and_ingest,
     exchange_code_for_tokens,
     get_authorize_url,
@@ -77,9 +78,11 @@ def panopto_oauth_login(request: Request, user: User = Depends(get_current_user)
 @router.get("/oauth/callback")
 def panopto_oauth_callback(request: Request, code: str = "", state: str = "", error: str = ""):
     """Panopto redirects here after you approve (or deny) the consent screen.
-    Prints the refresh_token in the response for you to copy into .env as
-    PANOPTO_REFRESH_TOKEN — deliberately not auto-saved anywhere, so you see
-    exactly what's happening with a credential this sensitive."""
+    Saves the refresh_token straight to this environment's database — see
+    PanoptoToken / get_access_token()'s docstring for why that, and not
+    PANOPTO_REFRESH_TOKEN in .env, is the ongoing source of truth. Still
+    shown in the response too, in case you want it in .env as a backup seed
+    for a from-scratch database."""
     if error:
         raise HTTPException(status_code=400, detail=f"Panopto denied the request: {error}")
     expected_state = request.session.pop("panopto_oauth_state", None)
@@ -102,12 +105,14 @@ def panopto_oauth_callback(request: Request, code: str = "", state: str = "", er
             "supports offline_access, and that this is its first authorization "
             "(some IdPs only issue one on first consent).",
         )
+    _save_refresh_token(refresh_token)
     return HTMLResponse(
         "<pre style='white-space:pre-wrap;font-family:monospace'>"
-        "Success. Add this to .env, then restart the app:\n\n"
-        f"PANOPTO_REFRESH_TOKEN={refresh_token}\n\n"
-        "This value is shown once and not stored anywhere by this app — "
-        "if you lose it, just run /panopto/oauth/login again."
+        "Success — saved to this environment's database, nothing more to do.\n\n"
+        f"(Backup seed for .env's PANOPTO_REFRESH_TOKEN, if you want one: {refresh_token})\n\n"
+        "That value is shown once and won't stay valid for long once this app "
+        "starts using it — Panopto rotates it on every call. If you ever need "
+        "to re-bootstrap, just run /panopto/oauth/login again."
         "</pre>"
     )
 

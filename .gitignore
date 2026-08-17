@@ -46,3 +46,4 @@ Thumbs.db
 *.mp4
 *.mov
 *.mkv
+.env*
