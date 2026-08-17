@@ -214,6 +214,69 @@ def _process_math(text: str) -> str:
     return text
 
 
+# Line-break and spacing commands the model sometimes emits in prose, between
+# two formulas. They land OUTSIDE $...$, so KaTeX never sees them and the browser
+# prints "\newline" verbatim; the exporters fare worse, matching the \ne symbol
+# and leaving "≠wline" behind. They carry no meaning here — drop them.
+_LAYOUT_COMMANDS_RE = re.compile(
+    r'\\(?:newline|linebreak|par|noindent|bigskip|medskip|smallskip)\b'
+    r'|\\\\(?!\\)'
+)
+
+# Splits a string into math segments (kept verbatim) and everything else.
+_MATH_SEGMENT_RE = re.compile(
+    r'(\$\$.*?\$\$|\$[^$]*\$|\\\[.*?\\\]|\\\(.*?\\\))', re.DOTALL,
+)
+
+
+def strip_layout_commands(text: str) -> str:
+    """Drop LaTeX layout commands that sit outside math mode.
+
+    Math segments are left byte-for-byte alone — `\\\\` is a real row separator
+    inside a matrix, and only becomes noise in prose.
+    """
+    if not text or '\\' not in text:
+        return text
+    parts = []
+    for part in _MATH_SEGMENT_RE.split(text):
+        if not part:
+            continue
+        if _MATH_SEGMENT_RE.fullmatch(part):
+            parts.append(part)
+        else:
+            parts.append(_LAYOUT_COMMANDS_RE.sub(' ', part))
+    return re.sub(r'[ \t]{2,}', ' ', ''.join(parts))
+
+
+def clean_study_content(data: dict) -> dict:
+    """Apply strip_layout_commands to every prose field of a study-material dict.
+
+    Used both when the material is generated and when it is read back, so
+    lectures processed before the fix render correctly too.
+    """
+    if not isinstance(data, dict):
+        return data
+
+    topics = data.get("topics")
+    if isinstance(topics, list):
+        data["topics"] = [
+            strip_layout_commands(t) if isinstance(t, str) else t for t in topics
+        ]
+
+    for key, fields in (("summaries", ("topic_name", "content")),
+                        ("flashcards", ("question", "answer"))):
+        items = data.get(key)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            for field in fields:
+                if isinstance(item.get(field), str):
+                    item[field] = strip_layout_commands(item[field])
+    return data
+
+
 def latex_to_text(text: str) -> str:
     """
     Convert a string that may contain LaTeX math delimiters mixed with

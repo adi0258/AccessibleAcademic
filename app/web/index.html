@@ -429,12 +429,31 @@
      * Applied to all text content before HTML insertion / KaTeX rendering.
      */
     function fixLatexEscapes(s) {
-      return (s || '')
+      return stripLayoutCommands((s || '')
         .replace(/\x08([a-zA-Z])/g, '\\b$1')   // backspace + letter → \b...
         .replace(/\x0c([a-zA-Z])/g, '\\f$1')   // form feed + letter  → \f...
         .replace(/\x0d([a-zA-Z])/g, '\\r$1')   // CR + letter         → \r...
         .replace(/\x09([a-zA-Z])/g, '\\t$1')   // tab + letter        → \t...
-        .replace(/\x0a([a-zA-Z])/g, '\\n$1');  // LF + letter         → \n...
+        .replace(/\x0a([a-zA-Z])/g, '\\n$1')); // LF + letter         → \n...
+    }
+
+    // Math segments are kept verbatim — \\ separates matrix rows in there.
+    const MATH_SEGMENT = /(\$\$[\s\S]*?\$\$|\$[^$]*\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\))/;
+    const MATH_SEGMENT_ONLY = /^(?:\$\$[\s\S]*?\$\$|\$[^$]*\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\))$/;
+    const LAYOUT_COMMANDS = /\\(?:newline|linebreak|par|noindent|bigskip|medskip|smallskip)\b|\\\\(?!\\)/g;
+
+    /**
+     * Drop LaTeX line-break commands the model leaves in prose, between two
+     * formulas. They sit outside $...$, so KaTeX never touches them and they
+     * would otherwise print as a literal "\newline". Mirrors
+     * strip_layout_commands() in app/services/math_utils.py.
+     */
+    function stripLayoutCommands(s) {
+      if (!s || s.indexOf('\\') === -1) return s || '';
+      return s.split(MATH_SEGMENT).map(function (part) {
+        if (!part) return '';
+        return MATH_SEGMENT_ONLY.test(part) ? part : part.replace(LAYOUT_COMMANDS, ' ');
+      }).join('').replace(/[ \t]{2,}/g, ' ');
     }
 
     function lecturesSignature(lectures) {

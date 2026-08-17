@@ -13,7 +13,7 @@ from sqlmodel import Session
 
 from app.core.config import EXPORTS_DIR
 from app.models import Lecture
-from app.services.math_utils import latex_to_text
+from app.services.math_utils import clean_study_content, latex_to_text
 
 # ─── OMML namespace ──────────────────────────────────────────────────────────
 _M = "http://schemas.openxmlformats.org/officeDocument/2006/math"
@@ -345,7 +345,9 @@ def _split_segments(text: str) -> list[tuple[str, str]]:
 
 def _load_processed_content(lecture: Lecture) -> dict:
     try:
-        return json.loads(lecture.processed_content_json)
+        # Cleaned on read as well as on write, so lectures processed before the
+        # prose-\newline fix export correctly without a migration.
+        return clean_study_content(json.loads(lecture.processed_content_json))
     except Exception:
         return {"topics": [], "summaries": [], "flashcards": []}
 

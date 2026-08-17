@@ -11,14 +11,16 @@ from sqlmodel import Session
 
 from app.core.config import EXPORTS_DIR, FONT_FILE
 from app.models import Lecture
-from app.services.math_utils import latex_to_text, _process_math
+from app.services.math_utils import clean_study_content, latex_to_text, _process_math
 
 PDF_FONT_NAME = "AccessibleAcademicUnicode"
 
 
 def _load_processed_content(lecture: Lecture) -> dict:
     try:
-        return json.loads(lecture.processed_content_json)
+        # Cleaned on read as well as on write, so lectures processed before the
+        # prose-\newline fix export correctly without a migration.
+        return clean_study_content(json.loads(lecture.processed_content_json))
     except Exception:
         return {"topics": [], "summaries": [], "flashcards": []}
 
