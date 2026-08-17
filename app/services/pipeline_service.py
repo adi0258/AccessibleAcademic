@@ -4,11 +4,14 @@ from typing import Optional
 
 from sqlmodel import Session
 
+from app.core.config import EXPORTS_DIR
 from app.core.database import engine
 from app.models import Lecture
 from app.services.ai_service import generate_study_material, transcribe_audio
 from app.services.audio_service import boost_audio
 from app.services.blob_service import upload_file_to_r2
+from app.services.math_utils import clean_study_content
+from app.services.subtitle_service import generate_vtt_string
 from app.services.validation_service import validate_study_material
 
 
@@ -76,9 +79,19 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
         validation = validate_study_material(transcript_text, processed)
 
         # Use purified content if the validator produced one; fall back to raw output
+        final_content = validation.purified_content
+        if not final_content:
+            try:
+                parsed = json.loads(processed)
+            except (TypeError, ValueError):
+                parsed = None
+            final_content = parsed if isinstance(parsed, dict) else None
+
+        # Models like to punctuate prose with \newline between two formulas; it
+        # renders as literal text in the browser and as garbage in the exports.
         final_content_json = (
-            json.dumps(validation.purified_content, ensure_ascii=False)
-            if validation.purified_content
+            json.dumps(clean_study_content(final_content), ensure_ascii=False)
+            if final_content
             else processed
         )
 
@@ -92,6 +105,8 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
                 lecture.progress_percent = 100
                 session_processed.add(lecture)
                 session_processed.commit()
+
+        _push_captions_to_panopto_if_linked(lecture_id)
     except Exception as e:
         print(f"Pipeline Error: {str(e)}")
         with Session(engine) as session_error:
@@ -101,3 +116,49 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
                 lecture.processing_stage = "error"
                 session_error.add(lecture)
                 session_error.commit()
+
+
+def _push_captions_to_panopto_if_linked(lecture_id: int) -> None:
+    """Panopto pilot integration: if this lecture was ingested from a Panopto
+    recording (panopto_session_id set), push its VTT back as a caption track
+    on that same session. Best-effort — a failure here doesn't affect the
+    lecture's own "completed" status, it's only recorded on the lecture row
+    for the sync status to surface (see panopto_service, /panopto/status)."""
+    with Session(engine) as session:
+        lecture = session.get(Lecture, lecture_id)
+        if not lecture or not lecture.panopto_session_id:
+            return
+        session_id = lecture.panopto_session_id
+        vtt_content = generate_vtt_string(lecture.words_json)
+
+    if not vtt_content:
+        return
+
+    from datetime import datetime, timezone
+
+    from app.services import panopto_service
+
+    vtt_path = EXPORTS_DIR / f"panopto_push_{lecture_id}.vtt"
+    try:
+        with open(vtt_path, "w", encoding="utf-8") as f:
+            f.write(vtt_content)
+        panopto_service.upload_captions(session_id, str(vtt_path))
+        synced_at = datetime.now(timezone.utc).isoformat()
+        error = None
+    except Exception as e:
+        synced_at = None
+        error = str(e)
+        print(f"Panopto caption push failed for lecture {lecture_id}: {error}")
+    finally:
+        try:
+            os.remove(vtt_path)
+        except OSError:
+            pass
+
+    with Session(engine) as session:
+        lecture = session.get(Lecture, lecture_id)
+        if lecture:
+            lecture.panopto_captions_synced_at = synced_at
+            lecture.panopto_sync_error = error
+            session.add(lecture)
+            session.commit()

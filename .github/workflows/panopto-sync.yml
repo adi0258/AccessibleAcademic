@@ -1,0 +1,39 @@
+name: Panopto pilot sync
+
+# Vercel's Hobby plan caps native Cron Jobs at once/day, which is too slow for
+# "notice a new lecture quickly" — this workflow is the substitute, since
+# GitHub Actions' free tier allows finer-grained schedules. Panopto itself has
+# no outbound webhook for "new session uploaded" (confirmed, not an oversight
+# on our end — see README), so polling is the only option either way.
+#
+# One-time setup, in this repo's Settings → Secrets and variables → Actions:
+#   - Secret   PANOPTO_SYNC_SECRET  — same value as PANOPTO_SYNC_SECRET in the
+#              deployed app's environment variables (Vercel project settings).
+#   - Variable APP_BASE_URL         — the deployed app's origin, e.g.
+#              https://accessible-academic-backend.vercel.app (no trailing slash).
+#
+# GitHub does not guarantee schedule triggers fire exactly on time — expect
+# some jitter, especially during periods of high platform load.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {} # lets you trigger a run by hand from the Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /panopto/sync
+        run: |
+          if [ -z "${{ vars.APP_BASE_URL }}" ] || [ -z "${{ secrets.PANOPTO_SYNC_SECRET }}" ]; then
+            echo "APP_BASE_URL variable or PANOPTO_SYNC_SECRET secret not set — see this file's header comment." >&2
+            exit 1
+          fi
+          http_status=$(curl -sS -o response.json -w "%{http_code}" -X POST \
+            "${{ vars.APP_BASE_URL }}/panopto/sync" \
+            -H "X-Sync-Secret: ${{ secrets.PANOPTO_SYNC_SECRET }}")
+          echo "HTTP $http_status"
+          cat response.json
+          if [ "$http_status" -ge 400 ]; then
+            exit 1
+          fi

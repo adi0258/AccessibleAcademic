@@ -33,6 +33,53 @@ SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY", "")
 # e.g. on Vercel). Example: https://your-app.vercel.app/auth/callback
 GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "")
 
+# Panopto pilot integration (see app/services/panopto_service.py).
+# PANOPTO_BASE_URL is the sandbox root, e.g. https://mta-sandbox.cloud.panopto.eu
+# — no trailing slash, no /Panopto suffix. Client id/secret come from an OAuth2
+# "API Client" created in Panopto under System > API Clients.
+#
+# Two client types are in play here, deliberately:
+#   - "Server Application" (Client Credentials grant) — runs with no user
+#     identity at all. Fine for reading/downloading, but Panopto refuses to
+#     let it edit captions (401 "User is not authorized"), and it isn't
+#     addressable in the folder-sharing UI to grant it a role either.
+#   - "Server-side Web Application" (Authorization Code + refresh token) —
+#     acts AS the admin who completes a one-time browser consent, so it
+#     inherits real permissions. This is what caption push needs, and what
+#     Panopto's own support recommends over the password-grant alternative
+#     ("User Based Server Application") — that one requires storing the
+#     admin's actual login password, which we're deliberately avoiding.
+# Set PANOPTO_REFRESH_TOKEN (below) to use the second kind; get_access_token()
+# falls back to Client Credentials when it's unset.
+PANOPTO_BASE_URL = os.environ.get("PANOPTO_BASE_URL", "").rstrip("/")
+PANOPTO_CLIENT_ID = os.environ.get("PANOPTO_CLIENT_ID", "")
+PANOPTO_CLIENT_SECRET = os.environ.get("PANOPTO_CLIENT_SECRET", "")
+# Obtained once via GET /panopto/oauth/login → complete the browser consent →
+# the /panopto/oauth/callback response prints it for you to paste in here.
+PANOPTO_REFRESH_TOKEN = os.environ.get("PANOPTO_REFRESH_TOKEN", "")
+# Must exactly match an "Allowed Redirect URL" on the Server-side Web
+# Application client in Panopto.
+PANOPTO_REDIRECT_URI = os.environ.get("PANOPTO_REDIRECT_URI", "http://127.0.0.1:8000/panopto/oauth/callback")
+# The Panopto folder to poll for new recordings (the folder's GUID, from its URL
+# in the Panopto UI). Used as the default when /panopto/sync is called with no
+# folder_id query param.
+PANOPTO_FOLDER_ID = os.environ.get("PANOPTO_FOLDER_ID", "")
+# Language tag sent with each caption upload — must match one of the values
+# Panopto's own captions UI offers (check Edit > Captions > Add a language on
+# a session in the sandbox to see the exact accepted strings).
+PANOPTO_CAPTION_LANGUAGE = os.environ.get("PANOPTO_CAPTION_LANGUAGE", "Hebrew")
+# Lets an automated caller (a scheduled GitHub Action, since Vercel Hobby's
+# own Cron is capped at once/day — see README) trigger /panopto/sync without
+# a logged-in session, by sending this value in an X-Sync-Secret header.
+# Any long random string; leave unset to disable the automated path entirely
+# (POST /panopto/sync still works normally for a logged-in human).
+PANOPTO_SYNC_SECRET = os.environ.get("PANOPTO_SYNC_SECRET", "")
+# Who owns Lecture rows created by an automated (secret-authenticated) sync,
+# since there's no logged-in user to attribute them to. Defaults to whichever
+# user has the lowest id (fine for a single-user pilot); set explicitly once
+# there's more than one real account.
+PANOPTO_SYNC_OWNER_USER_ID = os.environ.get("PANOPTO_SYNC_OWNER_USER_ID", "")
+
 
 def ensure_runtime_directories() -> None:
     RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)

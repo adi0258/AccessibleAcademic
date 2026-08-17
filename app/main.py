@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.auth_routes import router as auth_router
+from app.api.panopto_routes import router as panopto_router
 from app.api.routes import router as api_router
 from app.core.config import ASSETS_DIR, INDEX_FILE, RECORDINGS_DIR, SESSION_SECRET_KEY, WATCH_FILE, ensure_runtime_directories
 from app.core.database import create_db_and_tables
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(api_router)
+    app.include_router(panopto_router)
 
     @app.on_event("startup")
     def on_startup() -> None:

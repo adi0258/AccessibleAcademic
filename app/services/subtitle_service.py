@@ -1,5 +1,6 @@
 import json
 import re
+from typing import Optional
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
@@ -57,18 +58,18 @@ def _build_segments(words):
     return segments
 
 
-def export_lecture_srt(lecture_id: int, session: Session):
-    lecture = session.get(Lecture, lecture_id)
-    if not lecture or lecture.status != "completed":
-        raise HTTPException(status_code=404, detail="Lecture not ready")
-
+def generate_srt_string(words_json: str) -> Optional[str]:
+    """Build SRT text straight from a lecture's words_json. Returns None if
+    there's no usable timing data. Shared by the export route and anything
+    else that needs subtitle text without an HTTP round-trip (e.g. pushing
+    captions to Panopto from the pipeline)."""
     try:
-        words = json.loads(lecture.words_json or "[]")
+        words = json.loads(words_json or "[]")
     except Exception:
         words = []
     segments = _build_segments(words)
     if not segments:
-        raise HTTPException(status_code=400, detail="No subtitle timing data available for this lecture")
+        return None
 
     lines = []
     for idx, seg in enumerate(segments, 1):
@@ -76,7 +77,35 @@ def export_lecture_srt(lecture_id: int, session: Session):
         lines.append(f"{_ms_to_srt_timestamp(seg['start'])} --> {_ms_to_srt_timestamp(seg['end'])}")
         lines.append(seg["text"])
         lines.append("")
-    srt_content = "\n".join(lines).strip() + "\n"
+    return "\n".join(lines).strip() + "\n"
+
+
+def generate_vtt_string(words_json: str) -> Optional[str]:
+    """VTT counterpart to generate_srt_string — see there for details."""
+    try:
+        words = json.loads(words_json or "[]")
+    except Exception:
+        words = []
+    segments = _build_segments(words)
+    if not segments:
+        return None
+
+    lines = ["WEBVTT", ""]
+    for seg in segments:
+        lines.append(f"{_ms_to_vtt_timestamp(seg['start'])} --> {_ms_to_vtt_timestamp(seg['end'])}")
+        lines.append(seg["text"])
+        lines.append("")
+    return "\n".join(lines).strip() + "\n"
+
+
+def export_lecture_srt(lecture_id: int, session: Session):
+    lecture = session.get(Lecture, lecture_id)
+    if not lecture or lecture.status != "completed":
+        raise HTTPException(status_code=404, detail="Lecture not ready")
+
+    srt_content = generate_srt_string(lecture.words_json)
+    if not srt_content:
+        raise HTTPException(status_code=400, detail="No subtitle timing data available for this lecture")
 
     safe_title = "".join(c for c in lecture.title if c not in r"\/:*?\"<>|").strip() or f"lecture-{lecture_id}"
     safe_title = safe_title.replace("\n", " ").replace("\r", " ")[:200]
@@ -93,20 +122,9 @@ def export_lecture_vtt(lecture_id: int, session: Session):
     if not lecture or lecture.status != "completed":
         raise HTTPException(status_code=404, detail="Lecture not ready")
 
-    try:
-        words = json.loads(lecture.words_json or "[]")
-    except Exception:
-        words = []
-    segments = _build_segments(words)
-    if not segments:
+    vtt_content = generate_vtt_string(lecture.words_json)
+    if not vtt_content:
         raise HTTPException(status_code=400, detail="No subtitle timing data available for this lecture")
-
-    lines = ["WEBVTT", ""]
-    for seg in segments:
-        lines.append(f"{_ms_to_vtt_timestamp(seg['start'])} --> {_ms_to_vtt_timestamp(seg['end'])}")
-        lines.append(seg["text"])
-        lines.append("")
-    vtt_content = "\n".join(lines).strip() + "\n"
 
     safe_title = "".join(c for c in lecture.title if c not in r"\/:*?\"<>|").strip() or f"lecture-{lecture_id}"
     safe_title = safe_title.replace("\n", " ").replace("\r", " ")[:200]

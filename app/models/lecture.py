@@ -18,3 +18,9 @@ class Lecture(SQLModel, table=True):
     processing_stage: Optional[str] = None
     progress_percent: Optional[int] = None
     validation_json: Optional[str] = None
+    # Panopto pilot integration (see app/services/panopto_service.py). Set when this
+    # lecture was created from a Panopto recording, so the finished captions can be
+    # pushed back onto that same session.
+    panopto_session_id: Optional[str] = None
+    panopto_captions_synced_at: Optional[str] = None
+    panopto_sync_error: Optional[str] = None
