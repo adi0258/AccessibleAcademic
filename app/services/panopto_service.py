@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import requests
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -83,19 +84,92 @@ def _save_token_state(
     refresh_token: str,
     access_token: Optional[str] = None,
     access_token_expires_at: Optional[float] = None,
-) -> None:
+    expected_refresh_token: Optional[str] = None,
+) -> bool:
+    """Persist OAuth state. Returns False if `expected_refresh_token` was given
+    and no longer matches what's stored — i.e. a concurrent caller already
+    moved the refresh token on and this write was refused rather than allowed
+    to clobber theirs.
+
+    The conditional UPDATE is what makes that safe. Read-modify-write through
+    the ORM is not atomic under Postgres' default isolation: two callers can
+    both read the same row and both write, and the slower one wins — which
+    for a rotating credential means persisting a token that has already been
+    superseded and is therefore dead. A single UPDATE ... WHERE refresh_token
+    = :expected re-evaluates its predicate against the committed row, so the
+    late writer sees the mismatch and affects zero rows instead.
+
+    Row id is pinned to 1: this is a singleton, and pinning it turns a
+    simultaneous first-ever bootstrap from "two rows, one silently ignored"
+    into a primary-key conflict the loser can retry from.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
     with Session(engine) as db:
         row = db.exec(select(PanoptoToken).order_by(PanoptoToken.id)).first()
-        if not row:
-            row = PanoptoToken(refresh_token=refresh_token, updated_at="")
-        else:
-            row.refresh_token = refresh_token
+        if row is None:
+            db.add(
+                PanoptoToken(
+                    id=1,
+                    refresh_token=refresh_token,
+                    updated_at=now_iso,
+                    access_token=access_token,
+                    access_token_expires_at=access_token_expires_at,
+                )
+            )
+            try:
+                db.commit()
+                return True
+            except IntegrityError:
+                db.rollback()  # someone else bootstrapped first
+                return False
+
+        sql = (
+            "UPDATE panoptotoken SET refresh_token = :new_refresh, "
+            "updated_at = :updated_at"
+        )
+        params = {
+            "new_refresh": refresh_token,
+            "updated_at": now_iso,
+            "row_id": row.id,
+        }
         if access_token is not None:
-            row.access_token = access_token
-            row.access_token_expires_at = access_token_expires_at
-        row.updated_at = datetime.now(timezone.utc).isoformat()
-        db.add(row)
+            sql += ", access_token = :access_token, access_token_expires_at = :expires_at"
+            params["access_token"] = access_token
+            params["expires_at"] = access_token_expires_at
+        sql += " WHERE id = :row_id"
+        if expected_refresh_token is not None:
+            sql += " AND refresh_token = :expected"
+            params["expected"] = expected_refresh_token
+
+        result = db.execute(text(sql), params)
         db.commit()
+        return result.rowcount > 0
+
+
+def _save_token_state_with_retry(**kwargs) -> bool:
+    """_save_token_state, but doesn't give up on a blip.
+
+    Losing this write after a successful exchange is the one failure that
+    can't be recovered from in code: the token we just spent is dead, so
+    failing to store its replacement means the next refresh has nothing valid
+    to present and a human has to re-consent. A transient database error is
+    worth a few retries to avoid that.
+    """
+    last_error = None
+    for attempt in range(3):
+        try:
+            return _save_token_state(**kwargs)
+        except Exception as e:  # noqa: BLE001 — deliberately broad, see docstring
+            last_error = e
+            time.sleep(0.3 * (attempt + 1))
+    # Deliberately not logging the token value itself: it would land in
+    # Vercel's logs, and re-consenting is cheaper than leaking a credential.
+    print(
+        "Panopto: FAILED to persist rotated refresh token after 3 attempts "
+        f"({last_error}). Re-authorize at /panopto/oauth/login if sync starts "
+        "failing with invalid_grant."
+    )
+    return False
 
 
 def _save_refresh_token(token: str) -> None:
@@ -171,11 +245,19 @@ def get_access_token(force_refresh: bool = False) -> str:
     expires_at = now + payload.get("expires_in", 3600) - 60
     _token_cache["value"] = access_token
     _token_cache["expires_at"] = expires_at
-    _save_token_state(
-        payload.get("refresh_token") or refresh_token,
+    stored_ok = _save_token_state_with_retry(
+        refresh_token=payload.get("refresh_token") or refresh_token,
         access_token=access_token,
         access_token_expires_at=expires_at,
+        # Refuse to overwrite a refresh token that moved on while we were
+        # exchanging — see _save_token_state.
+        expected_refresh_token=refresh_token,
     )
+    if not stored_ok:
+        print(
+            "Panopto: refresh token moved on while we were exchanging; kept the "
+            "stored one. Using our access token for this process only."
+        )
     return access_token
 
 
@@ -239,6 +321,45 @@ def _auth_headers() -> dict:
     return {"Authorization": f"Bearer {get_access_token()}"}
 
 
+def _invalidate_cached_access_token() -> None:
+    """Drop the cached access token, here and in the database, so the next
+    caller mints a fresh one instead of re-presenting a rejected token."""
+    _token_cache["value"] = None
+    _token_cache["expires_at"] = 0.0
+    try:
+        with Session(engine) as db:
+            row = db.exec(select(PanoptoToken).order_by(PanoptoToken.id)).first()
+            if row:
+                row.access_token = None
+                row.access_token_expires_at = 0.0
+                db.add(row)
+                db.commit()
+    except Exception as e:  # noqa: BLE001 — never let cache cleanup break the call
+        print(f"Panopto: could not clear cached access token: {e}")
+
+
+def _authorized_request(method: str, url: str, build_kwargs) -> requests.Response:
+    """Authenticated Panopto call that survives a token being rejected early.
+
+    Caching the access token until its stated expiry assumes Panopto agrees
+    about when that is. If it ever disagrees — a revoked session, a
+    re-consent elsewhere, clock skew — every call would 401 against a token
+    we'd happily keep re-presenting for up to an hour, and the pipeline would
+    sit dead with nothing in the logs but 401s. One 401 is therefore treated
+    as "this token is stale regardless of what its expiry claims": drop it,
+    mint a fresh one, try once more.
+
+    `build_kwargs` is a callable rather than a dict because the retry needs
+    its own request body (an upload's file payload can't be replayed from a
+    consumed handle).
+    """
+    resp = requests.request(method, url, headers=_auth_headers(), **build_kwargs())
+    if resp.status_code == 401:
+        _invalidate_cached_access_token()
+        resp = requests.request(method, url, headers=_auth_headers(), **build_kwargs())
+    return resp
+
+
 def test_connection() -> dict:
     """Cheapest possible round-trip: just get a token. Used by /panopto/status
     so the OAuth client setup can be verified before wiring up anything else.
@@ -274,11 +395,13 @@ def list_recent_sessions(folder_id: str, limit: int = 25) -> list:
     for attempt in range(3):
         if attempt:
             time.sleep(1.5 * attempt)
-        resp = requests.get(
+        resp = _authorized_request(
+            "GET",
             f"{PANOPTO_BASE_URL}/Panopto/api/v1/folders/{folder_id}/sessions",
-            params={"sortField": "Date", "sortOrder": "Desc", "maxResults": limit},
-            headers=_auth_headers(),
-            timeout=30,
+            lambda: {
+                "params": {"sortField": "Date", "sortOrder": "Desc", "maxResults": limit},
+                "timeout": 30,
+            },
         )
         if resp.ok:
             data = resp.json()
@@ -295,10 +418,10 @@ def get_session_details(session_id: str) -> dict:
     something to expect for real uploads. This is the endpoint to trust for
     DownloadUrl; the listing endpoints below don't reliably populate it even
     when a session is fully downloadable (see their docstrings)."""
-    resp = requests.get(
+    resp = _authorized_request(
+        "GET",
         f"{PANOPTO_BASE_URL}/Panopto/api/v1/sessions/{session_id}",
-        headers=_auth_headers(),
-        timeout=30,
+        lambda: {"timeout": 30},
     )
     if not resp.ok:
         raise PanoptoAPIError(f"Fetching session {session_id} failed ({resp.status_code}): {resp.text}")
@@ -307,14 +430,23 @@ def get_session_details(session_id: str) -> dict:
 
 def download_from_url(download_url: str, dest_path: str, session_id: str = "") -> str:
     """Stream a Panopto download URL (from get_session_details) to dest_path."""
-    with requests.get(download_url, headers=_auth_headers(), stream=True, timeout=180) as r:
-        if not r.ok:
-            raise PanoptoAPIError(f"Downloading session {session_id or download_url} failed ({r.status_code})")
-        with open(dest_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1 << 20):
-                if chunk:
-                    f.write(chunk)
-    return dest_path
+    for attempt in range(2):
+        with requests.get(download_url, headers=_auth_headers(), stream=True, timeout=180) as r:
+            if r.status_code == 401 and attempt == 0:
+                # Same stale-token case _authorized_request handles; written out
+                # here because the response has to stay streamed, not buffered.
+                _invalidate_cached_access_token()
+                continue
+            if not r.ok:
+                raise PanoptoAPIError(
+                    f"Downloading session {session_id or download_url} failed ({r.status_code})"
+                )
+            with open(dest_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1 << 20):
+                    if chunk:
+                        f.write(chunk)
+            return dest_path
+    raise PanoptoAPIError(f"Downloading session {session_id or download_url} failed (401 after token refresh)")
 
 
 def download_session_video(session_id: str, dest_path: str) -> str:
@@ -342,14 +474,20 @@ def upload_captions(session_id: str, caption_path: str, language: str = PANOPTO_
     """
     filename = os.path.basename(caption_path)
     content_type = "text/vtt" if filename.lower().endswith(".vtt") else "application/x-subrip"
+    # Read the payload up front rather than handing over a file object: a
+    # retried request needs to send the body again, and a consumed handle
+    # would upload zero bytes the second time. Caption files are tiny.
     with open(caption_path, "rb") as f:
-        resp = requests.post(
-            f"{PANOPTO_BASE_URL}/Panopto/api/v1/sessions/{session_id}/captions",
-            headers=_auth_headers(),
-            files={"file": (filename, f, content_type)},
-            data={"language": language},
-            timeout=60,
-        )
+        payload = f.read()
+    resp = _authorized_request(
+        "POST",
+        f"{PANOPTO_BASE_URL}/Panopto/api/v1/sessions/{session_id}/captions",
+        lambda: {
+            "files": {"file": (filename, payload, content_type)},
+            "data": {"language": language},
+            "timeout": 60,
+        },
+    )
     if not resp.ok:
         raise PanoptoAPIError(f"Caption upload failed ({resp.status_code}): {resp.text}")
     return resp.json() if resp.content else {"status": "ok"}

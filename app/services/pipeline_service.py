@@ -4,7 +4,7 @@ from typing import Optional
 
 from sqlmodel import Session
 
-from app.core.config import EXPORTS_DIR
+from app.core.config import EXPORTS_DIR, RECORDINGS_DIR
 from app.core.database import engine
 from app.models import Lecture
 from app.services.ai_service import generate_study_material, transcribe_audio
@@ -116,6 +116,41 @@ def run_full_pipeline(lecture_id: int, audio_filename: str):
                 lecture.processing_stage = "error"
                 session_error.add(lecture)
                 session_error.commit()
+    finally:
+        _cleanup_panopto_media(lecture_id, audio_filename)
+
+
+def _cleanup_panopto_media(lecture_id: int, audio_filename: str) -> None:
+    """Delete the working copies of a Panopto-sourced recording once we're done
+    with it, success or failure.
+
+    Serverless /tmp is small (512MB) and shared by every invocation that lands
+    on the same warm instance, while each lecture leaves two files behind: the
+    download and FFmpeg's boosted copy, together roughly twice the source
+    video. Left alone, a couple of hour-long lectures fill it and the next
+    download fails with no obvious cause — the kind of fault that only shows
+    up after days of unattended running.
+
+    Only for Panopto-sourced lectures: those play back from Panopto, so
+    nothing needs the local file afterwards. A manually uploaded lecture is
+    left alone, since the app itself may still be serving it from /static.
+    """
+    try:
+        with Session(engine) as session:
+            lecture = session.get(Lecture, lecture_id)
+            if not lecture or not lecture.panopto_session_id:
+                return
+
+        base = os.path.basename(audio_filename)
+        for name in (base, f"boosted_{base}"):
+            path = RECORDINGS_DIR / name
+            try:
+                if path.is_file():
+                    path.unlink()
+            except OSError as e:
+                print(f"Panopto media cleanup: could not remove {path}: {e}")
+    except Exception as e:  # noqa: BLE001 — cleanup must never mask the real outcome
+        print(f"Panopto media cleanup failed for lecture {lecture_id}: {e}")
 
 
 def _push_captions_to_panopto_if_linked(lecture_id: int) -> None:
