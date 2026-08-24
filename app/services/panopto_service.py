@@ -493,7 +493,35 @@ def upload_captions(session_id: str, caption_path: str, language: str = PANOPTO_
     return resp.json() if resp.content else {"status": "ok"}
 
 
-def diagnostics(db: Session, folder_id: str = "") -> dict:
+def probe_session(session_id: str) -> dict:
+    """Read-only check of the one call the ingest path depends on and the
+    folder listing can't stand in for: whether a session's details come back
+    and actually carry a download URL.
+
+    Worth having separately because a session can look perfectly healthy in
+    the listing and still be un-downloadable — Panopto still encoding it, or
+    downloads disabled on the folder — and that only surfaces at ingest time,
+    as a recording that gets noticed every poll and never progresses. Fetches
+    metadata only; downloads nothing.
+    """
+    try:
+        details = get_session_details(session_id)
+    except Exception as e:  # noqa: BLE001 — this is a diagnostic, report don't raise
+        return {"session_id": session_id, "details_fetched": False, "error": str(e)}
+    urls = details.get("Urls") or {}
+    download_url = urls.get("DownloadUrl") or urls.get("downloadUrl") or details.get("DownloadUrl")
+    return {
+        "session_id": session_id,
+        "details_fetched": True,
+        "name": details.get("Name"),
+        "downloadable": bool(download_url),
+        # The URL itself is a credentialed link — say whether it's there, not what it is.
+        "download_url_host": download_url.split("/")[2] if download_url else None,
+        "has_captions_already": bool(urls.get("CaptionDownloadUrl")),
+    }
+
+
+def diagnostics(db: Session, folder_id: str = "", probe_session_id: str = "") -> dict:
     """One read-only snapshot of everything that has to be true for the
     automatic pipeline to work: config, OAuth state, what Panopto currently
     shows in the folder, and what we've done with each of those sessions.
@@ -543,6 +571,9 @@ def diagnostics(db: Session, folder_id: str = "") -> dict:
     except Exception as e:
         report["panopto_folder"] = {"reachable": False, "error": str(e)}
         report["sessions"] = []
+
+    if probe_session_id:
+        report["probe"] = probe_session(probe_session_id)
 
     report["lectures"] = [
         {

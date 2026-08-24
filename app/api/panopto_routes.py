@@ -63,6 +63,7 @@ def panopto_status(user: User = Depends(get_current_user)):
 @router.get("/diagnostics")
 def panopto_diagnostics(
     folder_id: str = "",
+    probe_session_id: str = "",
     x_sync_secret: str = Header(default="", alias="X-Sync-Secret"),
     session: Session = Depends(get_session),
     user: Optional[User] = Depends(get_current_user_optional),
@@ -73,7 +74,7 @@ def panopto_diagnostics(
     shared secret), so it can be checked from outside the browser without
     ingesting anything or spending the refresh token."""
     _resolve_sync_owner(session, user, x_sync_secret)
-    return diagnostics(session, folder_id=folder_id)
+    return diagnostics(session, folder_id=folder_id, probe_session_id=probe_session_id)
 
 
 @router.get("/oauth/login")
