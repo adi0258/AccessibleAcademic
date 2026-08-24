@@ -300,6 +300,33 @@ These endpoints are restricted to the pilot owner — the account named by
 Anyone can sign in with a Google account, and these trigger real work and
 expose the folder's contents, so being signed in is not on its own enough.
 
+### Resetting the pilot for a clean test
+
+**Order matters, and getting it backwards silently undoes the reset.** Delete
+the recordings from the Panopto folder *first*, then clear the database. The
+poller treats any session it has no row for as new work, so clearing the
+database while recordings are still in the folder means the next poll — at
+most two minutes later — starts re-ingesting them, re-transcribing at full
+cost, and the reset is gone before anyone notices.
+
+1. Delete the test recordings in the Panopto folder.
+2. Confirm the folder is empty: `GET /panopto/diagnostics` should report
+   `panopto_folder.session_count: 0`.
+3. Clear the pilot rows — and only those:
+   ```sql
+   DELETE FROM lecture WHERE panopto_session_id IS NOT NULL;
+   ```
+   That covers every piece of per-recording state, because the retry
+   counters, caption attempts, heartbeat, and sync errors all live on the
+   lecture row. **Leave `panoptotoken` alone** — that's the OAuth grant, and
+   dropping it means a human has to re-consent at `/panopto/oauth/login`.
+4. Confirm: diagnostics should show no lectures, an empty `attention`, and
+   `oauth.refresh_token_stored: true`.
+
+Downloaded media needs no cleanup: it lives in the serverless `/tmp`, which
+is discarded when the instance recycles, and anything a killed worker left
+behind is swept on a later poll.
+
 ### Things worth knowing going in
 
 *(All verified live against the sandbox — not guesses.)*
