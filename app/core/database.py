@@ -39,6 +39,9 @@ def create_db_and_tables() -> None:
             ("panopto_session_id", "TEXT"),
             ("panopto_captions_synced_at", "TEXT"),
             ("panopto_sync_error", "TEXT"),
+            ("ingest_attempts", "INTEGER DEFAULT 0"),
+            ("caption_attempts", "INTEGER DEFAULT 0"),
+            ("last_progress_at", "TEXT"),
         ],
         "panoptotoken": [
             ("access_token", "TEXT"),

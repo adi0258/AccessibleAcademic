@@ -81,6 +81,37 @@ PANOPTO_SYNC_SECRET = os.environ.get("PANOPTO_SYNC_SECRET", "")
 PANOPTO_SYNC_OWNER_USER_ID = os.environ.get("PANOPTO_SYNC_OWNER_USER_ID", "")
 
 
+def _int_env(name: str, default: int) -> int:
+    """Read an int setting without letting a typo take the pipeline down —
+    a bad value falls back to the default rather than raising at import."""
+    raw = os.environ.get(name, "")
+    try:
+        return int(raw) if raw else default
+    except ValueError:
+        print(f"config: {name}={raw!r} is not an integer; using {default}")
+        return default
+
+
+# How many not-yet-ingested recordings a single /panopto/sync will take on.
+# Deliberately small: each one costs a download plus a full transcription
+# inside one serverless invocation, and the poller comes back every two
+# minutes, so a backlog drains steadily instead of trying to do everything in
+# one call and being killed partway.
+PANOPTO_MAX_NEW_PER_SYNC = _int_env("PANOPTO_MAX_NEW_PER_SYNC", 1)
+# Give up on a recording after this many attempts. Without a ceiling, one
+# permanently broken recording is retried every couple of minutes forever,
+# re-downloading it each time.
+PANOPTO_MAX_INGEST_ATTEMPTS = _int_env("PANOPTO_MAX_INGEST_ATTEMPTS", 4)
+PANOPTO_MAX_CAPTION_ATTEMPTS = _int_env("PANOPTO_MAX_CAPTION_ATTEMPTS", 4)
+# A lecture whose progress hasn't moved in this long is presumed dead — the
+# invocation was killed by the execution limit, or a redeploy landed
+# mid-processing. It gets marked failed so it becomes retryable instead of
+# sitting in "processing" forever.
+PANOPTO_STALL_MINUTES = _int_env("PANOPTO_STALL_MINUTES", 30)
+# Ceiling on how long we'll wait for AssemblyAI on one recording.
+TRANSCRIPTION_TIMEOUT_MINUTES = _int_env("TRANSCRIPTION_TIMEOUT_MINUTES", 40)
+
+
 def ensure_runtime_directories() -> None:
     RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
     EXPORTS_DIR.mkdir(parents=True, exist_ok=True)

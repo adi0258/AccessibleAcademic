@@ -30,3 +30,13 @@ class Lecture(SQLModel, table=True):
     panopto_session_id: Optional[str] = Field(default=None, unique=True, index=True)
     panopto_captions_synced_at: Optional[str] = None
     panopto_sync_error: Optional[str] = None
+    # How many times we've tried to ingest/process this recording, so a
+    # permanently broken one stops being retried instead of being
+    # re-downloaded every couple of minutes forever.
+    ingest_attempts: int = 0
+    caption_attempts: int = 0
+    # Heartbeat, updated on every progress change. A lecture still marked
+    # "processing" whose heartbeat has gone quiet is one whose worker died —
+    # serverless execution limit, or a redeploy mid-flight — and is what lets
+    # the reaper tell "still working" apart from "never coming back".
+    last_progress_at: Optional[str] = None

@@ -26,8 +26,8 @@ Sandbox quirks worth keeping in mind, all found the hard way:
 import os
 import time
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import NamedTuple, Optional
 
 import requests
 from sqlalchemy import text
@@ -40,8 +40,12 @@ from app.core.config import (
     PANOPTO_CLIENT_ID,
     PANOPTO_CLIENT_SECRET,
     PANOPTO_FOLDER_ID,
+    PANOPTO_MAX_CAPTION_ATTEMPTS,
+    PANOPTO_MAX_INGEST_ATTEMPTS,
+    PANOPTO_MAX_NEW_PER_SYNC,
     PANOPTO_REDIRECT_URI,
     PANOPTO_REFRESH_TOKEN,
+    PANOPTO_STALL_MINUTES,
     RECORDINGS_DIR,
 )
 from app.core.database import engine
@@ -552,10 +556,28 @@ def diagnostics(db: Session, folder_id: str = "", probe_session_id: str = "") ->
         },
     }
 
+    # Columns only, newest first, capped: diagnostics must stay cheap enough to
+    # call at any time, including while a poller is mid-run, and pulling whole
+    # rows would mean pulling every transcript.
     lectures = db.exec(
-        select(Lecture).where(Lecture.panopto_session_id.is_not(None)).order_by(Lecture.id)
+        select(
+            Lecture.id,
+            Lecture.title,
+            Lecture.panopto_session_id,
+            Lecture.status,
+            Lecture.processing_stage,
+            Lecture.progress_percent,
+            Lecture.panopto_captions_synced_at,
+            Lecture.panopto_sync_error,
+            Lecture.ingest_attempts,
+            Lecture.caption_attempts,
+            Lecture.last_progress_at,
+        )
+        .where(Lecture.panopto_session_id.is_not(None))
+        .order_by(Lecture.id.desc())
+        .limit(50)
     ).all()
-    by_session = {lecture.panopto_session_id: lecture for lecture in lectures}
+    by_session = {row[2] for row in lectures}
 
     try:
         sessions = list_recent_sessions(folder_id, limit=25) if folder_id else []
@@ -577,16 +599,34 @@ def diagnostics(db: Session, folder_id: str = "", probe_session_id: str = "") ->
 
     report["lectures"] = [
         {
-            "lecture_id": lecture.id,
-            "title": lecture.title,
-            "session_id": lecture.panopto_session_id,
-            "status": lecture.status,
-            "stage": lecture.processing_stage,
-            "progress": lecture.progress_percent,
-            "captions_synced_at": lecture.panopto_captions_synced_at,
-            "sync_error": lecture.panopto_sync_error,
+            "lecture_id": row[0],
+            "title": row[1],
+            "session_id": row[2],
+            "status": row[3],
+            "stage": row[4],
+            "progress": row[5],
+            "captions_synced_at": row[6],
+            "sync_error": row[7],
+            "ingest_attempts": row[8],
+            "caption_attempts": row[9],
+            "last_progress_at": row[10],
+            # Surfaced explicitly so "we've stopped retrying this" is legible
+            # at a glance instead of having to be inferred from the counters.
+            "given_up": bool(row[3] and row[3].startswith("error")
+                             and (row[8] or 0) >= PANOPTO_MAX_INGEST_ATTEMPTS),
         }
-        for lecture in lectures
+        for row in lectures
+    ]
+    report["attention"] = [
+        {
+            "lecture_id": entry["lecture_id"],
+            "title": entry["title"],
+            "reason": entry["status"],
+        }
+        for entry in report["lectures"]
+        if entry["given_up"]
+        or (entry["captions_synced_at"] is None and entry["status"] == "completed"
+            and (entry["caption_attempts"] or 0) >= PANOPTO_MAX_CAPTION_ATTEMPTS)
     ]
     return report
 
@@ -599,75 +639,327 @@ def _session_name_of(raw: dict) -> str:
     return raw.get("Name") or raw.get("name") or "Untitled Panopto recording"
 
 
-def discover_and_ingest(db: Session, user_id: int, folder_id: str = "", limit: int = 25) -> dict:
-    """Pull step: find Panopto recordings in a folder that we haven't ingested
-    yet, and download each one into a new Lecture row with panopto_session_id
-    set, so the pipeline knows to push captions back on completion (see
-    pipeline_service). Does NOT start transcription itself — the download is
-    done here (synchronously, so a "sync now" call has something concrete to
-    show for itself), but the caller is expected to schedule
-    pipeline_service.run_full_pipeline(lecture_id, filename) as a background
-    task for each item in "created", same as a manual upload would.
+def _utcnow_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class _IngestState(NamedTuple):
+    """Just enough of a Lecture to decide what to do with its session, without
+    dragging the transcript and word timings along."""
+
+    lecture_id: int
+    session_id: str
+    status: Optional[str]
+    ingest_attempts: int
+
+
+def _is_retryable_failure(lecture) -> bool:
+    """Accepts either a Lecture or an _IngestState — both carry what's needed."""
+    status = getattr(lecture, "status", None)
+    attempts = getattr(lecture, "ingest_attempts", 0) or 0
+    return bool(status) and status.startswith("error") and attempts < PANOPTO_MAX_INGEST_ATTEMPTS
+
+
+def reap_stalled_lectures(db: Session) -> list:
+    """Mark as failed any Panopto lecture whose worker stopped reporting.
+
+    A serverless invocation can be killed at any moment — execution limit
+    reached, or a redeploy landing mid-processing — and whatever it was doing
+    simply stops. The row is left saying "processing", which every later poll
+    reads as "someone is already on it", so the recording is never picked up
+    again and never appears as a failure either. It just quietly never
+    finishes.
+
+    Marking it failed is what turns that dead end back into a retry: failed
+    rows are eligible to be claimed again (up to PANOPTO_MAX_INGEST_ATTEMPTS).
+    A live worker updates last_progress_at as it goes, so it won't be reaped.
     """
-    folder_id = folder_id or PANOPTO_FOLDER_ID
-    if not folder_id:
-        raise PanoptoNotConfigured("No folder_id given and PANOPTO_FOLDER_ID is not set")
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=PANOPTO_STALL_MINUTES)
+    reaped = []
+    # Columns, not whole rows: a Lecture carries the transcript and the
+    # word-level timings (hundreds of KB each), and this runs on every poll.
+    # Selecting entities here would pull the whole corpus into the function's
+    # memory every two minutes, which is fine at four lectures and fatal at
+    # a few thousand.
+    candidates = db.exec(
+        select(
+            Lecture.id,
+            Lecture.panopto_session_id,
+            Lecture.processing_stage,
+            Lecture.last_progress_at,
+        ).where(
+            Lecture.panopto_session_id.is_not(None),
+            Lecture.status == "processing",
+        )
+    ).all()
 
-    raw_sessions = list_recent_sessions(folder_id, limit=limit)
-    known_ids = set(
-        db.exec(
-            select(Lecture.panopto_session_id).where(Lecture.panopto_session_id.is_not(None))
-        ).all()
-    )
+    for lecture_id, session_id, stage, heartbeat in candidates:
+        if heartbeat:
+            try:
+                if datetime.fromisoformat(heartbeat) > cutoff:
+                    continue  # still alive
+            except ValueError:
+                pass  # unparseable heartbeat — treat as stalled
+        db.execute(
+            text(
+                "UPDATE lecture SET status = :status, processing_stage = 'stalled' "
+                "WHERE id = :lecture_id AND status = 'processing'"
+            ),
+            {
+                "status": (
+                    f"error: stalled — no progress for over {PANOPTO_STALL_MINUTES} "
+                    f"minutes (stage was '{stage}')"
+                ),
+                "lecture_id": lecture_id,
+            },
+        )
+        reaped.append({"lecture_id": lecture_id, "session_id": session_id})
+    if reaped:
+        db.commit()
+    return reaped
 
-    created, skipped, failed = [], [], []
-    for raw in raw_sessions:
-        session_id = _session_id_of(raw)
-        if not session_id:
-            continue
-        if session_id in known_ids:
-            skipped.append(session_id)
-            continue
 
-        name = _session_name_of(raw)
-        try:
-            dest = RECORDINGS_DIR / f"panopto_{session_id}_{uuid.uuid4().hex[:8]}.mp4"
-            download_session_video(session_id, str(dest))  # fetches its own Urls — see that function's docstring
-        except Exception as e:
-            failed.append({"session_id": session_id, "name": name, "error": str(e)})
-            continue
+def sweep_stale_downloads(max_age_hours: int = 3) -> list:
+    """Delete Panopto downloads left behind by an invocation that was killed.
 
+    The pipeline cleans up after itself, but only if it gets to run its
+    cleanup — a worker stopped mid-download leaves the partial file sitting in
+    a 512MB /tmp shared by every invocation on that instance. Nothing else
+    ever removes it, so on a long-lived warm instance the leftovers accumulate
+    until downloads start failing for want of space.
+
+    Only touches `panopto_` files older than any plausible in-flight run, so a
+    download happening right now is never pulled out from under itself.
+    """
+    removed = []
+    cutoff = time.time() - max_age_hours * 3600
+    try:
+        for path in RECORDINGS_DIR.glob("*panopto_*"):
+            try:
+                if path.is_file() and path.stat().st_mtime < cutoff:
+                    path.unlink()
+                    removed.append(path.name)
+            except OSError:
+                continue  # vanished under us, or not ours to remove
+    except Exception as e:  # noqa: BLE001 — housekeeping must never break a sync
+        print(f"Panopto: stale download sweep failed: {e}")
+    return removed
+
+
+def _claim_session(db: Session, user_id: int, session_id: str, name: str,
+                   existing: Optional[Lecture]) -> Optional[int]:
+    """Take ownership of a recording so no other poller run picks it up too.
+
+    Claiming happens before the download rather than after, and that ordering
+    is the point: two poller runs can be alive at once, and a download is
+    minutes of work. Claim-last means both would pass the "already ingested?"
+    check and download the same recording. The claim is a single atomic
+    statement either way — an insert guarded by the unique index for a new
+    recording, a conditional update for a retry — so exactly one caller wins
+    and the other gets None and moves on.
+    """
+    now = _utcnow_iso()
+    if existing is None:
         lecture = Lecture(
             title=name,
-            filename=dest.name,
+            filename="",
             status="processing",
-            processing_stage="pending",
+            processing_stage="downloading",
             progress_percent=0,
             user_id=user_id,
             panopto_session_id=session_id,
+            ingest_attempts=1,
+            last_progress_at=now,
         )
         db.add(lecture)
         try:
             db.commit()
         except IntegrityError:
-            # Another poller run ingested this session while we were
-            # downloading it — the unique index on panopto_session_id is what
-            # stops us billing a second transcription for the same recording.
-            # Its download is the one that counts; drop ours.
-            db.rollback()
-            try:
-                os.remove(dest)
-            except OSError:
-                pass
+            db.rollback()  # another run claimed it first
+            return None
+        db.refresh(lecture)
+        return lecture.id
+
+    # Retry of a previously failed lecture: only succeeds if the row is still
+    # in the failed state we read it in, so two runs can't both retry it.
+    result = db.execute(
+        text(
+            "UPDATE lecture SET status = 'processing', processing_stage = 'downloading', "
+            "progress_percent = 0, ingest_attempts = ingest_attempts + 1, "
+            "last_progress_at = :now, panopto_sync_error = NULL "
+            "WHERE id = :lecture_id AND status LIKE 'error%'"
+        ),
+        {"now": now, "lecture_id": existing.lecture_id},
+    )
+    db.commit()
+    return existing.lecture_id if result.rowcount else None
+
+
+def discover_and_ingest(
+    db: Session, user_id: int, folder_id: str = "", limit: int = 100,
+    max_new: Optional[int] = None,
+) -> dict:
+    """Pull step: claim Panopto recordings that need ingesting.
+
+    Only claims — the download and the pipeline run in a background task
+    (ingest_and_process), so this returns in well under a second no matter
+    how big the backlog is. Doing the download here instead would put minutes
+    of work inside the request, and with several new recordings at once the
+    invocation would be killed partway, leaving rows created but never
+    processed.
+
+    Claims are capped per call (PANOPTO_MAX_NEW_PER_SYNC) for the same
+    reason: one recording per invocation, drained by the poller every couple
+    of minutes, rather than everything at once.
+    """
+    folder_id = folder_id or PANOPTO_FOLDER_ID
+    if not folder_id:
+        raise PanoptoNotConfigured("No folder_id given and PANOPTO_FOLDER_ID is not set")
+    max_new = PANOPTO_MAX_NEW_PER_SYNC if max_new is None else max_new
+
+    reaped = reap_stalled_lectures(db)
+    swept = sweep_stale_downloads()
+
+    raw_sessions = list_recent_sessions(folder_id, limit=limit)
+    # Columns only — see reap_stalled_lectures for why entities would be a
+    # memory problem here.
+    by_session = {
+        session_id: _IngestState(lecture_id, session_id, status, attempts or 0)
+        for lecture_id, session_id, status, attempts in db.exec(
+            select(
+                Lecture.id,
+                Lecture.panopto_session_id,
+                Lecture.status,
+                Lecture.ingest_attempts,
+            ).where(Lecture.panopto_session_id.is_not(None))
+        ).all()
+    }
+
+    claimed, skipped, deferred, gave_up = [], [], [], []
+    for raw in raw_sessions:
+        session_id = _session_id_of(raw)
+        if not session_id:
+            continue
+        name = _session_name_of(raw)
+        existing = by_session.get(session_id)
+
+        if existing is not None and not _is_retryable_failure(existing):
+            if existing.status and existing.status.startswith("error"):
+                # Out of attempts: stop retrying, but stay visible in diagnostics.
+                gave_up.append({
+                    "session_id": session_id, "name": name,
+                    "lecture_id": existing.lecture_id, "attempts": existing.ingest_attempts,
+                    "error": (existing.status or "")[:200],
+                })
+            else:
+                skipped.append(session_id)
+            continue
+
+        if len(claimed) >= max_new:
+            # Deliberately left for the next poll — reported separately from
+            # "skipped" so a backlog reads as work queued rather than work
+            # ignored.
+            deferred.append(session_id)
+            continue
+
+        lecture_id = _claim_session(db, user_id, session_id, name, existing)
+        if lecture_id is None:
             skipped.append(session_id)
             continue
-        db.refresh(lecture)
-        # filename (basename) matches the Lecture.filename DB convention; audio_source
-        # is the full path run_full_pipeline actually needs (bare filenames resolve
-        # against whatever the caller's cwd happens to be, not RECORDINGS_DIR).
-        created.append({
-            "session_id": session_id, "name": name, "lecture_id": lecture.id,
-            "filename": dest.name, "audio_source": str(dest),
+        claimed.append({
+            "session_id": session_id, "name": name, "lecture_id": lecture_id,
+            "retry": existing is not None,
         })
 
-    return {"created": created, "skipped": skipped, "failed": failed}
+    return {
+        "created": claimed,      # name kept for compatibility with the sync route
+        "skipped": skipped,
+        "deferred": deferred,
+        "failed": [],
+        "gave_up": gave_up,
+        "reaped": reaped,
+        "swept_files": swept,
+    }
+
+
+CAPTIONS_ALREADY_PRESENT = "already has captions"
+
+
+def retry_caption_pushes(db: Session, limit: int = 1) -> list:
+    """Re-attempt caption pushes that didn't land, and reconcile the ones that
+    actually did.
+
+    Pushing captions is the last step, and it's the one most likely to fail
+    for reasons that have nothing to do with the recording — a network blip,
+    Panopto briefly unavailable. Without this, that lecture is transcribed,
+    paid for, and finished, but its captions never reach Panopto and nothing
+    ever tries again.
+
+    It also closes the gap where the upload succeeded and only our record of
+    it failed. That looks identical to a fresh push failing, except Panopto
+    answers the retry with "session already has captions" — which means the
+    end state we wanted is already true, so it's recorded as done rather than
+    retried forever.
+    """
+    # Ids only, limited in SQL rather than in Python — fetching entities and
+    # slicing afterwards would pull every finished lecture's transcript into
+    # memory just to pick one.
+    candidate_ids = db.exec(
+        select(Lecture.id).where(
+            Lecture.panopto_session_id.is_not(None),
+            Lecture.status == "completed",
+            Lecture.panopto_captions_synced_at.is_(None),
+            Lecture.caption_attempts < PANOPTO_MAX_CAPTION_ATTEMPTS,
+        ).order_by(Lecture.id).limit(limit)
+    ).all()
+
+    from app.services.pipeline_service import push_captions_for_lecture  # local: import cycle
+
+    return [
+        {"lecture_id": lecture_id, "outcome": push_captions_for_lecture(lecture_id)}
+        for lecture_id in candidate_ids
+    ]
+
+
+def ingest_and_process(lecture_id: int, session_id: str) -> None:
+    """Background half of ingest: download the recording, then hand it to the
+    normal transcription pipeline. A failure here leaves the lecture in a
+    failed state that a later poll can retry, rather than losing it."""
+    from app.services.pipeline_service import run_full_pipeline  # local: avoids an import cycle
+
+    dest = RECORDINGS_DIR / f"panopto_{session_id}_{uuid.uuid4().hex[:8]}.mp4"
+    try:
+        download_session_video(session_id, str(dest))
+    except Exception as e:  # noqa: BLE001 — record it, don't crash the worker
+        with Session(engine) as db:
+            lecture = db.get(Lecture, lecture_id)
+            if lecture:
+                lecture.status = f"error: download failed — {e}"
+                lecture.processing_stage = "download_failed"
+                lecture.last_progress_at = _utcnow_iso()
+                db.add(lecture)
+                db.commit()
+        try:
+            if dest.is_file():
+                dest.unlink()
+        except OSError:
+            pass
+        return
+
+    with Session(engine) as db:
+        lecture = db.get(Lecture, lecture_id)
+        if not lecture:
+            # Deleted while we were downloading — don't leave the file behind.
+            try:
+                if dest.is_file():
+                    dest.unlink()
+            except OSError:
+                pass
+            return
+        lecture.filename = dest.name
+        lecture.processing_stage = "pending"
+        lecture.last_progress_at = _utcnow_iso()
+        db.add(lecture)
+        db.commit()
+
+    run_full_pipeline(lecture_id, str(dest))

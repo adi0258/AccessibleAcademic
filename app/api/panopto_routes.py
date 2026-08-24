@@ -17,29 +17,55 @@ from app.services.panopto_service import (
     discover_and_ingest,
     exchange_code_for_tokens,
     get_authorize_url,
+    ingest_and_process,
+    retry_caption_pushes,
     test_connection,
 )
-from app.services.pipeline_service import run_full_pipeline
 
 router = APIRouter(prefix="/panopto", tags=["panopto"])
 
 
-def _resolve_sync_owner(session: Session, user: Optional[User], sync_secret: str) -> User:
-    """/panopto/sync accepts either a logged-in session OR a shared secret
-    (for the scheduled GitHub Action — see README). A secret-authenticated
-    call has no human to attribute the resulting Lecture rows to, so it falls
-    back to PANOPTO_SYNC_OWNER_USER_ID, or the lowest-id user if that's unset."""
-    if user is not None:
-        return user
-    if not PANOPTO_SYNC_SECRET or not sync_secret or not secrets.compare_digest(sync_secret, PANOPTO_SYNC_SECRET):
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
+def _designated_owner(session: Session) -> Optional[User]:
+    """Whoever the pilot's Panopto lectures belong to: PANOPTO_SYNC_OWNER_USER_ID
+    if set, otherwise the lowest-id account (fine while there's only one real
+    user)."""
     if PANOPTO_SYNC_OWNER_USER_ID:
-        owner = session.get(User, int(PANOPTO_SYNC_OWNER_USER_ID))
+        try:
+            owner = session.get(User, int(PANOPTO_SYNC_OWNER_USER_ID))
+        except ValueError:
+            # Misconfigured to something non-numeric: fall through to the
+            # default owner rather than 500-ing every sync from now on.
+            print(f"PANOPTO_SYNC_OWNER_USER_ID={PANOPTO_SYNC_OWNER_USER_ID!r} is not an integer")
+            owner = None
         if owner:
             return owner
-    owner = session.exec(select(User).order_by(User.id)).first()
-    if not owner:
+    return session.exec(select(User).order_by(User.id)).first()
+
+
+def _resolve_sync_owner(session: Session, user: Optional[User], sync_secret: str) -> User:
+    """Authorise a call to the Panopto pilot controls and return the account
+    the resulting lectures belong to.
+
+    Two ways in: a signed-in browser session, or the shared secret the
+    scheduled poller uses (it has no human to be). Signing in is not by itself
+    enough — anyone can create an account here with a Google login, and these
+    endpoints trigger real work and expose the pilot's Panopto folder
+    contents, so a signed-in caller must actually be the pilot owner.
+    """
+    owner = _designated_owner(session)
+    if user is not None:
+        if owner is None or user.id != owner.id:
+            raise HTTPException(
+                status_code=403,
+                detail="The Panopto pilot controls are restricted to the pilot owner.",
+            )
+        return owner
+
+    if not PANOPTO_SYNC_SECRET or not sync_secret or not secrets.compare_digest(
+        sync_secret, PANOPTO_SYNC_SECRET
+    ):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if owner is None:
         raise HTTPException(status_code=503, detail="No users exist yet to own synced lectures")
     return owner
 
@@ -160,6 +186,15 @@ def panopto_sync(
         raise HTTPException(status_code=502, detail=str(e))
 
     for item in result["created"]:
-        background_tasks.add_task(run_full_pipeline, item["lecture_id"], item["audio_source"])
+        background_tasks.add_task(ingest_and_process, item["lecture_id"], item["session_id"])
+
+    # Finished lectures whose captions never reached Panopto get another go,
+    # one per call so this stays a cheap addition to the poll. Only runs when
+    # nothing was claimed, so a backlog of new recordings takes priority.
+    if not result["created"]:
+        try:
+            result["caption_retries"] = retry_caption_pushes(session)
+        except Exception as e:  # noqa: BLE001 — never fail the sync over a retry
+            result["caption_retries"] = [{"error": str(e)}]
 
     return result

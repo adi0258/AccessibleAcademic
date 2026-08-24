@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlmodel import Session
@@ -26,6 +27,9 @@ def _update_lecture_progress(
         if lecture:
             lecture.processing_stage = processing_stage
             lecture.progress_percent = progress_percent
+            # Heartbeat: this is what tells the reaper the difference between a
+            # long-running job and a worker that died mid-flight.
+            lecture.last_progress_at = datetime.now(timezone.utc).isoformat()
             if assemblyai_transcript_id is not None:
                 lecture.assemblyai_transcript_id = assemblyai_transcript_id
             session.add(lecture)
@@ -153,37 +157,56 @@ def _cleanup_panopto_media(lecture_id: int, audio_filename: str) -> None:
         print(f"Panopto media cleanup failed for lecture {lecture_id}: {e}")
 
 
-def _push_captions_to_panopto_if_linked(lecture_id: int) -> None:
-    """Panopto pilot integration: if this lecture was ingested from a Panopto
-    recording (panopto_session_id set), push its VTT back as a caption track
-    on that same session. Best-effort — a failure here doesn't affect the
-    lecture's own "completed" status, it's only recorded on the lecture row
-    for the sync status to surface (see panopto_service, /panopto/status)."""
+def push_captions_for_lecture(lecture_id: int) -> str:
+    """Push a Panopto-sourced lecture's captions back onto its session.
+
+    Returns one of: "skipped" (not a Panopto lecture, or nothing to send),
+    "synced", "already_present", or "failed". Safe to call again on anything
+    that isn't "synced" — retry_caption_pushes() does exactly that, which is
+    why the outcome is reported rather than just recorded.
+
+    A failure here deliberately doesn't touch the lecture's own "completed"
+    status: the transcript and study material are finished and usable, and
+    only the Panopto hand-off is outstanding.
+    """
+    from app.services import panopto_service
+
     with Session(engine) as session:
         lecture = session.get(Lecture, lecture_id)
         if not lecture or not lecture.panopto_session_id:
-            return
+            return "skipped"
         session_id = lecture.panopto_session_id
         vtt_content = generate_vtt_string(lecture.words_json)
+        attempts = (lecture.caption_attempts or 0) + 1
 
-    if not vtt_content:
-        return
-
-    from datetime import datetime, timezone
-
-    from app.services import panopto_service
+        if not vtt_content:
+            # A recording with no recognisable speech (silent, or seconds
+            # long). Recorded rather than passed over in silence, otherwise
+            # it looks identical to a push that never ran.
+            lecture.caption_attempts = attempts
+            lecture.panopto_sync_error = "no subtitle timing data — nothing to upload"
+            session.add(lecture)
+            session.commit()
+            return "skipped"
 
     vtt_path = EXPORTS_DIR / f"panopto_push_{lecture_id}.vtt"
+    synced_at, error, outcome = None, None, "failed"
     try:
+        EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
         with open(vtt_path, "w", encoding="utf-8") as f:
             f.write(vtt_content)
         panopto_service.upload_captions(session_id, str(vtt_path))
-        synced_at = datetime.now(timezone.utc).isoformat()
-        error = None
-    except Exception as e:
-        synced_at = None
-        error = str(e)
-        print(f"Panopto caption push failed for lecture {lecture_id}: {error}")
+        synced_at, outcome = datetime.now(timezone.utc).isoformat(), "synced"
+    except Exception as e:  # noqa: BLE001 — outcome is reported, not raised
+        message = str(e)
+        if panopto_service.CAPTIONS_ALREADY_PRESENT in message.lower():
+            # Panopto won't replace a caption track, so this is what a
+            # successful upload whose bookkeeping failed looks like on the
+            # retry. The end state we wanted is already true.
+            synced_at, outcome = datetime.now(timezone.utc).isoformat(), "already_present"
+        else:
+            error, outcome = message, "failed"
+            print(f"Panopto caption push failed for lecture {lecture_id}: {message}")
     finally:
         try:
             os.remove(vtt_path)
@@ -193,7 +216,19 @@ def _push_captions_to_panopto_if_linked(lecture_id: int) -> None:
     with Session(engine) as session:
         lecture = session.get(Lecture, lecture_id)
         if lecture:
+            lecture.caption_attempts = attempts
             lecture.panopto_captions_synced_at = synced_at
             lecture.panopto_sync_error = error
             session.add(lecture)
             session.commit()
+    return outcome
+
+
+def _push_captions_to_panopto_if_linked(lecture_id: int) -> None:
+    """Called at the end of the pipeline. Kept as a thin wrapper so a caption
+    failure can never propagate into the pipeline's own error handling —
+    retry_caption_pushes() will pick it up on a later poll."""
+    try:
+        push_captions_for_lecture(lecture_id)
+    except Exception as e:  # noqa: BLE001
+        print(f"Panopto caption push raised for lecture {lecture_id}: {e}")

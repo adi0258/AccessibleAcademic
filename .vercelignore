@@ -20,3 +20,6 @@ documentation/
 export_*.pdf
 export_*.srt
 export_*.vtt
+
+# Test suite - not needed at runtime
+tests/

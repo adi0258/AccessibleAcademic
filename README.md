@@ -43,23 +43,58 @@ it up, runs it through the same transcription pipeline as a manual upload, and
 pushes the resulting captions back onto that same Panopto recording.
 
 ```
-Lecturer uploads in Panopto  →  POST /panopto/sync (pull)
-                                     │
-                                     ▼
-                     download video, create Lecture row
-                     (panopto_session_id set), run the normal
-                     pipeline in the background — identical to
-                     a manual upload from here on
-                                     │
-                                     ▼
-                     on completion, VTT captions are POSTed
-                     back onto the same Panopto session (push)
+ GitHub Actions poller ──every 2 min──▶ POST /panopto/sync
+                                              │
+                    ┌─────────────────────────┼──────────────────────────┐
+                    ▼                         ▼                          ▼
+            reap stalled lectures     sweep abandoned /tmp        list the folder
+            (dead workers become        downloads                        │
+             retryable failures)                                         ▼
+                                                          claim ONE recording that
+                                                          needs work (atomic, so two
+                                                          pollers can't both take it)
+                                                                         │
+                                          returns immediately ───────────┤
+                                                                         ▼
+                                                            background: download →
+                                                            boost audio → AssemblyAI →
+                                                            GPT study material →
+                                                            4-agent validation →
+                                                            push VTT captions to Panopto
 ```
 
-Code: [`app/services/panopto_service.py`](app/services/panopto_service.py) (the
-Panopto API client + sync orchestration), wired into
-[`app/services/pipeline_service.py`](app/services/pipeline_service.py) (push on
-completion) and exposed via [`app/api/panopto_routes.py`](app/api/panopto_routes.py).
+Everything is driven by polling because **Panopto has no outbound webhook for
+"new session uploaded"** — a long-standing, still-unshipped request on their
+side, not a gap in this setup.
+
+The shape above is the result of things going wrong in practice, so the
+reasoning is worth keeping:
+
+- **Claim before downloading, one at a time.** Two pollers overlap by design
+  (a new schedule tick replaces the running one), and a download is minutes of
+  work. Claiming afterwards meant both could take the same recording — two
+  downloads, two transcriptions billed. Claiming is a single atomic statement,
+  and `lecture.panopto_session_id` carries a unique index behind it.
+- **The request returns before the work starts.** Downloading inside the
+  request put minutes of work in the handler; with several new recordings at
+  once the invocation was killed partway, leaving rows created but never
+  processed.
+- **Failures are retryable, up to a ceiling.** Anything that fails — download,
+  transcription, an API outage — leaves the lecture in a failed state that a
+  later poll can pick up again, up to `PANOPTO_MAX_INGEST_ATTEMPTS`. Without a
+  ceiling one broken recording is re-downloaded every two minutes forever.
+- **Dead workers are reaped.** A killed invocation leaves a row saying
+  "processing", which every later poll reads as "someone is on it". A
+  heartbeat (`last_progress_at`) tells a long job apart from a dead one, and
+  the reaper turns the dead ones back into retryable failures.
+
+Code: [`app/services/panopto_service.py`](app/services/panopto_service.py)
+(Panopto API client, OAuth, claim/reap/retry), wired into
+[`app/services/pipeline_service.py`](app/services/pipeline_service.py)
+(transcription pipeline + caption push) and exposed via
+[`app/api/panopto_routes.py`](app/api/panopto_routes.py). Regression suite:
+[`tests/test_panopto_pipeline.py`](tests/test_panopto_pipeline.py) —
+`python3 tests/test_panopto_pipeline.py`, no framework or network needed.
 
 ### One-time setup (needs sandbox admin login — this part is on you)
 
@@ -170,16 +205,24 @@ notice + 5–10 minutes to process** for a ~45-minute lecture.
 
 ### Leaving it running unattended
 
-What the code now handles by itself, with no human in the loop: access
-tokens expiring (refreshed on demand), refresh tokens rotating (persisted
-with a compare-and-swap so a slow writer can't bury a newer one), a token
-Panopto rejects earlier than its stated expiry (invalidated and reminted on
-the first 401 rather than re-presented for an hour), transient refresh
-failures (the stored credential survives, the next attempt succeeds),
-overlapping pollers (unique index on the session id), a recording that isn't
-downloadable yet because Panopto is still encoding it (retried next poll),
-and `/tmp` filling up with downloaded media (cleaned up after each lecture,
-success or failure).
+Handled by the code, no human in the loop:
+
+| Failure | What happens |
+|---|---|
+| Access token expires | Refreshed on demand; cached in the DB so a cold start doesn't re-spend the refresh token |
+| Refresh token rotates | Persisted with a compare-and-swap, so a slow writer can't bury a newer one |
+| Token rejected before its stated expiry | First 401 invalidates and remints, rather than re-presenting it for an hour |
+| Transient refresh failure | Stored credential survives; the next attempt succeeds unaided |
+| Two pollers overlap | Atomic claim + unique index — one wins, the other moves on |
+| Panopto still encoding the recording | No download URL yet, so it's retried next poll |
+| Download / transcription / API outage | Recorded as a retryable failure, retried up to `PANOPTO_MAX_INGEST_ATTEMPTS` |
+| Worker killed mid-processing (execution limit, redeploy) | Heartbeat goes quiet, reaper marks it failed, next poll retries it |
+| Caption push fails | Retried on later polls, up to `PANOPTO_MAX_CAPTION_ATTEMPTS` |
+| Caption uploaded but our DB write failed | The retry gets "already has captions" and records it as done |
+| Backlog of many recordings | Drained one per poll instead of all in one invocation |
+| `/tmp` filling with media | Cleaned up per lecture, plus a sweep for files a killed worker abandoned |
+| AssemblyAI wedged / flaky | Bounded by `TRANSCRIPTION_TIMEOUT_MINUTES`; transient poll errors are absorbed |
+| Validator misbehaves | The lecture is kept with unpurified content rather than being thrown away |
 
 What still needs a human, eventually:
 
@@ -195,12 +238,29 @@ What still needs a human, eventually:
   `/panopto/oauth/login` and re-consenting. `/panopto/diagnostics` shows
   `refresh_token_stored` so this is visible before anyone goes looking
   through logs.
-- **A lecture that fails *after* its row exists is not retried.** See the
-  caveat below; it shows up in diagnostics as a lecture with an error status.
+- **A recording that fails its full retry budget stops being retried.** That's
+  deliberate — the alternative is re-downloading a broken recording forever —
+  but it means someone has to look. `/panopto/diagnostics` lists these under
+  `attention`, and each shows `given_up: true`.
+- **Nothing pages you.** Diagnostics makes the state legible, but only when
+  someone asks. There is no alerting; a pipeline that has quietly given up on
+  every recording looks exactly like an idle one from the outside.
+- **Database growth is unbounded.** Word-level timings dominate (~0.5 MB for
+  an hour-long lecture) and nothing prunes them. Fine for a pilot, worth a
+  retention policy before this runs at course scale — the managed Postgres
+  free tier is the first thing that would bite.
+- **Continuous polling keeps the database awake.** A poll every two minutes
+  means the serverless Postgres never idles into its suspended state, so
+  compute is effectively billed around the clock. If usage becomes a
+  concern, the lever is the poll interval in the workflow.
 - **Very long recordings are unproven.** A 48-minute lecture has been through
   the whole pipeline on production Vercel successfully; something
-  substantially longer may run into the serverless execution limit, which
-  would show as a lecture stuck partway with no error.
+  substantially longer may run into the serverless execution limit. It now
+  fails visibly rather than hanging — the reaper catches it — but it would
+  fail repeatedly until it exhausts its retries.
+- **Deleting a Panopto-sourced lecture in the UI makes it come back.** The
+  recording is still in the folder, so the next poll sees an unknown session
+  and ingests it again.
 
 ### Checking on it
 
@@ -220,18 +280,36 @@ un-downloadable — Panopto still encoding it, or downloads switched off on
 the folder — which otherwise only surfaces as a recording that gets noticed
 on every poll and never progresses. The probe fetches metadata only.
 
+The two fields to read first:
+
+- **`attention`** — recordings the pipeline has given up on, or whose
+  captions never landed after a full retry budget. Empty is the healthy
+  state; anything here needs a person.
+- **`oauth.refresh_token_stored`** — false means the pilot needs a
+  re-consent at `/panopto/oauth/login` and nothing will sync until then.
+
+Per-lecture, `ingest_attempts` / `caption_attempts` show how much retry
+budget is left and `last_progress_at` is the heartbeat the reaper uses.
+
 Nothing in the response includes a secret: credentials are reported as
 present/absent, and the download URL as its host rather than the
 credentialed link itself.
+
+These endpoints are restricted to the pilot owner — the account named by
+`PANOPTO_SYNC_OWNER_USER_ID`, or the lowest-id account if that's unset.
+Anyone can sign in with a Google account, and these trigger real work and
+expose the folder's contents, so being signed in is not on its own enough.
 
 ### Things worth knowing going in
 
 *(All verified live against the sandbox — not guesses.)*
 
-- **Captions can't be replaced via this API.** If you re-run a sync against
-  the same recording after already pushing captions, Panopto will reject the
-  second upload for that language — delete the old caption track in the
-  Panopto UI first if you want to re-test.
+- **Captions can't be replaced via this API.** Pushing a second track for a
+  language a session already has is a 400. That's also what a successful
+  upload whose bookkeeping failed looks like on retry, so
+  `push_captions_for_lecture()` treats "already has captions" as done rather
+  than as an error. To genuinely re-caption a recording, delete the existing
+  track in the Panopto UI first.
 - **Caption edits need a real user identity, not just folder access.**
   A Client Credentials token gets a clean 401 trying to edit captions,
   regardless of how open the folder's sharing settings are — see the
@@ -261,21 +339,23 @@ credentialed link itself.
   would be a liability rather than a diagnostic. Prefer
   `GET /panopto/diagnostics` for a fuller picture.
 - **Two pollers can be in flight at once** (a new tick cancels the old one,
-  but not instantly), so `lecture.panopto_session_id` carries a unique index
-  and `discover_and_ingest()` treats the resulting `IntegrityError` as
-  "someone else got there first". Without it, one recording could be
-  downloaded and transcribed twice — billed twice — and the second caption
-  push would then fail as a duplicate.
-- **A session that fails *after* its lecture row exists is not retried
-  automatically**, because the row makes it look already-ingested. A session
-  that fails *before* that (e.g. Panopto hasn't finished encoding, so there's
-  no download URL yet) is retried on the next poll, which is the common case.
-  `GET /panopto/diagnostics` surfaces the former as a lecture with an error
-  status.
-- Confirmed end-to-end (2026-08-17): caption push verified not just via our
-  own DB but independently, by re-fetching the session from Panopto's API
-  and seeing a populated `CaptionDownloadUrl` for Hebrew that wasn't there
-  before.
+  but not instantly), so recordings are claimed atomically before being
+  downloaded and `lecture.panopto_session_id` carries a unique index behind
+  it. Without that, one recording could be downloaded and transcribed twice —
+  billed twice — and the second caption push would then fail as a duplicate.
+- **Failures are retried, but not forever.** Anything that fails leaves the
+  lecture in a state a later poll can reclaim, up to
+  `PANOPTO_MAX_INGEST_ATTEMPTS`; past that it's reported under `attention` in
+  diagnostics and left alone, because retrying without a ceiling means
+  re-downloading a permanently broken recording indefinitely.
+- **The list endpoint omits `words_json`.** It's the largest column by a wide
+  margin and the list screen — which polls every five seconds — doesn't read
+  it. `GET /lectures/{id}` still returns it, which is what the captions
+  player uses.
+- Confirmed end-to-end on 2026-08-17 and again on 2026-08-24, twice
+  unattended: caption push verified not just via our own DB but
+  independently, by re-fetching the session from Panopto's API and seeing a
+  populated `CaptionDownloadUrl` for Hebrew that wasn't there before.
 
 ## 👥 The Team
 

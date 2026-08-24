@@ -90,26 +90,17 @@ def process_lecture(
     return {"message": "Started", "lecture_id": new_lecture.id}
 
 
-@router.get("/debug-env")
-def debug_env():
-    import os, sys, shutil, sysconfig, glob
-    scripts_dir = sysconfig.get_path("scripts")
-    search_results = glob.glob("/var/**/node", recursive=True)[:5] + \
-                     glob.glob("/usr/**/node", recursive=True)[:3] + \
-                     glob.glob("/home/**/node", recursive=True)[:3]
-    return {
-        "VERCEL": os.environ.get("VERCEL"),
-        "python_exe": sys.executable,
-        "python_bin_dir": os.path.dirname(sys.executable),
-        "sysconfig_scripts": scripts_dir,
-        "node_in_scripts_dir": os.path.exists(os.path.join(scripts_dir or "", "node")),
-        "system_node": shutil.which("node"),
-        "node_found_by_glob": search_results,
-    }
-
-
-@router.get("/lectures", response_model=List[Lecture])
+@router.get("/lectures", response_model=List[Lecture], response_model_exclude={"__all__": {"words_json"}})
 def get_all_lectures(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    """Every lecture for the signed-in user, minus words_json.
+
+    words_json is the word-level timing data — by far the largest column
+    (roughly half a megabyte for an hour-long lecture, dwarfing everything
+    else on the row) — and nothing on the list screen reads it; captions are
+    served per-lecture from the subtitle endpoints. Leaving it in meant every
+    open tab pulled the entire corpus every five seconds, so the cost of
+    having the page open grew with the number of lectures ever recorded.
+    """
     return session.exec(select(Lecture).where(Lecture.user_id == user.id)).all()
 
 

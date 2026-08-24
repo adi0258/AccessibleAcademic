@@ -294,10 +294,14 @@ def _purify_content_agent(
         s for s in summary_report.get("summaries", [])
         if s.get("grounding_score", 1.0) < GROUNDING_PASS_THRESHOLD or s.get("issues")
     ]
+    # .get() throughout rather than indexing: these dicts are model output, so
+    # a missing field is a normal thing to survive, not an exception.
     flagged_flashcard_indices = {
-        fc["index"]
+        fc.get("index")
         for fc in flashcard_report.get("flashcards", [])
-        if not fc.get("question_grounded", True) or not fc.get("answer_grounded", True)
+        if isinstance(fc, dict)
+        and fc.get("index") is not None
+        and (not fc.get("question_grounded", True) or not fc.get("answer_grounded", True))
     }
 
     if not flagged_summaries and not flagged_flashcard_indices:
@@ -308,7 +312,9 @@ def _purify_content_agent(
             "items_removed": 0,
         }
 
-    flagged_topic_names = {s["topic_name"] for s in flagged_summaries}
+    flagged_topic_names = {
+        s.get("topic_name") for s in flagged_summaries if isinstance(s, dict)
+    }
     summaries_to_fix = [
         s for s in content.get("summaries", [])
         if s.get("topic_name") in flagged_topic_names
@@ -372,12 +378,14 @@ def _purify_content_agent(
 
     # Apply fixes to the original content
     fixed_summaries_map = {
-        s["topic_name"]: s["content"]
+        s.get("topic_name"): s.get("content")
         for s in purifier_output.get("fixed_summaries", [])
+        if isinstance(s, dict) and s.get("topic_name") is not None
     }
     fixed_flashcards_map = {
-        fc["original_index"]: fc
+        fc.get("original_index"): fc
         for fc in purifier_output.get("fixed_flashcards", [])
+        if isinstance(fc, dict) and fc.get("original_index") is not None
     }
 
     items_rewritten = 0
@@ -405,8 +413,8 @@ def _purify_content_agent(
                 continue
             final_flashcards.append({
                 **fc,
-                "question": fix["question"],
-                "answer": fix["answer"],
+                "question": fix.get("question"),
+                "answer": fix.get("answer", fc.get("answer")),
             })
             items_rewritten += 1
         else:
@@ -476,20 +484,31 @@ def validate_study_material(transcript: str, processed_content_json: str) -> Val
             else:
                 score_report = result
 
-    # Derive scores — prefer the independent scorer (agent 3), fall back to per-item scores
-    summary_score = float(
-        score_report.get("summary_score")
-        or summary_report.get("summary_overall_score")
-        or 1.0
+    # Derive scores — prefer the independent scorer (agent 3), fall back to
+    # per-item scores. _as_score() because these come from a model: a string,
+    # a null, or something structurally unexpected shouldn't be able to fail
+    # the whole lecture at the arithmetic.
+    def _as_score(*candidates, default: float = 1.0) -> float:
+        for value in candidates:
+            if value is None:
+                continue
+            try:
+                score = float(value)
+            except (TypeError, ValueError):
+                continue
+            if 0.0 <= score <= 1.0:
+                return score
+        return default
+
+    summary_score = _as_score(
+        score_report.get("summary_score"), summary_report.get("summary_overall_score")
     )
-    flashcard_score = float(
-        score_report.get("flashcard_score")
-        or flashcard_report.get("flashcard_overall_score")
-        or 1.0
+    flashcard_score = _as_score(
+        score_report.get("flashcard_score"), flashcard_report.get("flashcard_overall_score")
     )
-    overall_score = float(
-        score_report.get("overall_score")
-        or (summary_score * 0.6 + flashcard_score * 0.4)
+    overall_score = _as_score(
+        score_report.get("overall_score"),
+        default=summary_score * 0.6 + flashcard_score * 0.4,
     )
 
     # Collect all issues into a flat list
@@ -513,10 +532,33 @@ def validate_study_material(transcript: str, processed_content_json: str) -> Val
                 reason=fc.get("issue") or "לא מבוסס על התמלול",
             ))
 
-    # Run agent 4 (purifier) if anything was flagged
-    purifier_result = _purify_content_agent(
-        transcript, content, summary_report, flashcard_report
-    )
+    # Run agent 4 (purifier) if anything was flagged.
+    #
+    # Guarded like agents 1-3 are. By this point the transcription has been
+    # paid for and the study material generated; letting a purifier hiccup —
+    # an API error, a malformed JSON reply, a field the model left out —
+    # propagate would throw all of that away and fail the whole lecture over
+    # the optional final polish. Falling back to the unpurified content keeps
+    # the lecture, and the validation scores still record what was flagged.
+    try:
+        purifier_result = _purify_content_agent(
+            transcript, content, summary_report, flashcard_report
+        )
+    except Exception as exc:  # noqa: BLE001 — see above
+        print(f"[validation] Agent 'purifier' failed, keeping unpurified content: {exc}")
+        issues.append(GroundingIssue(
+            item_type="system",
+            item_index=-1,
+            field="purifier",
+            excerpt="",
+            reason=f"purifier agent failed, content left unpurified: {exc}",
+        ))
+        purifier_result = {
+            "summaries": content.get("summaries", []),
+            "flashcards": content.get("flashcards", []),
+            "items_rewritten": 0,
+            "items_removed": 0,
+        }
 
     purified_content = {
         "topics": content.get("topics", []),

@@ -6,6 +6,8 @@ from typing import Optional
 import requests
 from openai import BadRequestError, OpenAI
 
+from app.core.config import TRANSCRIPTION_TIMEOUT_MINUTES
+
 
 def _fix_json_latex_escapes(s: str) -> str:
     """
@@ -108,21 +110,58 @@ def transcribe_audio(filename: str, lecture_id: Optional[int] = None, progress_c
     if lecture_id is not None and progress_cb:
         progress_cb(lecture_id, "transcribing", 15, assemblyai_transcript_id=tx_id)
 
+    deadline = time.monotonic() + TRANSCRIPTION_TIMEOUT_MINUTES * 60
+    consecutive_poll_errors = 0
+    last_progress_report = 0.0
+    status = "unknown"
+
     while True:
-        poll_res = requests.get(
-            f"https://api.assemblyai.com/v2/transcript/{tx_id}",
-            headers=headers,
-            timeout=30,
-        )
-        res = _response_json(poll_res, "status polling")
+        if time.monotonic() > deadline:
+            # Without a ceiling this loop is unbounded: a transcript stuck in
+            # "processing" would be polled until the whole invocation is
+            # killed, leaving the lecture frozen mid-pipeline with nothing
+            # recorded. Failing explicitly makes it a retryable error instead.
+            raise RuntimeError(
+                f"AssemblyAI did not finish within {TRANSCRIPTION_TIMEOUT_MINUTES} minutes "
+                f"(transcript {tx_id}, last status '{status}')"
+            )
+
+        try:
+            poll_res = requests.get(
+                f"https://api.assemblyai.com/v2/transcript/{tx_id}",
+                headers=headers,
+                timeout=30,
+            )
+            res = _response_json(poll_res, "status polling")
+            consecutive_poll_errors = 0
+        except (requests.RequestException, RuntimeError) as e:
+            # A blip while polling shouldn't throw away a transcription that
+            # is already running and already paid for — the job is server-side
+            # and keeps going, so back off and ask again.
+            consecutive_poll_errors += 1
+            if consecutive_poll_errors >= 5:
+                raise RuntimeError(
+                    f"AssemblyAI polling failed {consecutive_poll_errors} times in a row: {e}"
+                ) from e
+            time.sleep(min(30, 3 * consecutive_poll_errors))
+            continue
+
         status = res.get("status", "")
-        if lecture_id is not None and progress_cb:
+        # Report at most every 30s. The status is only interesting when it
+        # changes, and this loop ticks every 3 seconds — writing to the
+        # database each time would be hundreds of pointless writes per
+        # lecture, all saying the same thing.
+        now = time.monotonic()
+        if lecture_id is not None and progress_cb and now - last_progress_report >= 30:
             if status == "queued":
                 progress_cb(lecture_id, "transcribing", 20)
+                last_progress_report = now
             elif status == "processing":
                 progress_cb(lecture_id, "transcribing", 50)
+                last_progress_report = now
+
         if status == "completed":
-            return {"text": res["text"], "words": res.get("words", [])}
+            return {"text": res.get("text") or "", "words": res.get("words", [])}
         if status == "error":
             raise RuntimeError(res.get("error", "Transcription failed"))
         time.sleep(3)
@@ -131,7 +170,11 @@ def transcribe_audio(filename: str, lecture_id: Optional[int] = None, progress_c
 def generate_study_material(text: str):
     client = OpenAI(api_key=_require_env("OPENAI_API_KEY"))
 
-    prompt = f"""
+    # Raw f-string: the LaTeX examples below are full of backslash sequences,
+    # and in a normal string Python eats them. "\to" in the limit example was
+    # being turned into an actual tab character, so the one worked example of
+    # a limit that the model is asked to imitate reached it malformed.
+    prompt = rf"""
     נתח את תמלול ההרצאה האקדמית הבא בעברית והחזר JSON בלבד.
     הסיכומים חייבים להיות מקצועיים, אקדמיים ומפורטים מאוד.
 
