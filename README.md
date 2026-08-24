@@ -168,6 +168,40 @@ regardless of how fast the upload is noticed. Polling gets uploads *noticed*
 quickly; it doesn't skip the processing time. Budget roughly **2 minutes to
 notice + 5–10 minutes to process** for a ~45-minute lecture.
 
+### Leaving it running unattended
+
+What the code now handles by itself, with no human in the loop: access
+tokens expiring (refreshed on demand), refresh tokens rotating (persisted
+with a compare-and-swap so a slow writer can't bury a newer one), a token
+Panopto rejects earlier than its stated expiry (invalidated and reminted on
+the first 401 rather than re-presented for an hour), transient refresh
+failures (the stored credential survives, the next attempt succeeds),
+overlapping pollers (unique index on the session id), a recording that isn't
+downloadable yet because Panopto is still encoding it (retried next poll),
+and `/tmp` filling up with downloaded media (cleaned up after each lecture,
+success or failure).
+
+What still needs a human, eventually:
+
+- **GitHub disables scheduled workflows after 60 days without repository
+  activity.** Any commit re-arms them, and GitHub emails the repo owner
+  first — but a pilot left completely untouched for two months will go
+  quiet, and nothing in this app can tell you that from the inside. Checking
+  that the Actions tab still shows recent runs is the cheapest way to notice.
+- **If the refresh token is ever genuinely lost** — Panopto-side revocation,
+  or the one unrecoverable case where an exchange succeeds but persisting
+  the replacement fails three times over — sync starts failing with
+  `invalid_grant`, and the only fix is a person visiting
+  `/panopto/oauth/login` and re-consenting. `/panopto/diagnostics` shows
+  `refresh_token_stored` so this is visible before anyone goes looking
+  through logs.
+- **A lecture that fails *after* its row exists is not retried.** See the
+  caveat below; it shows up in diagnostics as a lecture with an error status.
+- **Very long recordings are unproven.** A 48-minute lecture has been through
+  the whole pipeline on production Vercel successfully; something
+  substantially longer may run into the serverless execution limit, which
+  would show as a lecture stuck partway with no error.
+
 ### Checking on it
 
 `GET /panopto/diagnostics` (same `X-Sync-Secret` header as `/panopto/sync`)
@@ -178,6 +212,17 @@ and whether each session has been ingested, and every Panopto-linked lecture
 with its status and caption-sync result. It spends no tokens and ingests
 nothing, so it's safe to call at any time, including while a poller is
 mid-run.
+
+Add `?probe_session_id=<id>` to also check the one thing the folder listing
+can't tell you: whether that session's details actually carry a download
+URL. A recording can look healthy in the listing and still be
+un-downloadable — Panopto still encoding it, or downloads switched off on
+the folder — which otherwise only surfaces as a recording that gets noticed
+on every poll and never progresses. The probe fetches metadata only.
+
+Nothing in the response includes a secret: credentials are reported as
+present/absent, and the download URL as its host rather than the
+credentialed link itself.
 
 ### Things worth knowing going in
 
