@@ -133,12 +133,22 @@ not a gap on our end; it's a feature Panopto users have been requesting for
 years without it shipping. Polling is the only option.
 
 Vercel's Hobby plan caps native Cron Jobs at once/day — far too slow — so
-instead a **GitHub Actions workflow** polls `/panopto/sync` every 5 minutes:
+instead a **GitHub Actions workflow** drives the polling:
 [`.github/workflows/panopto-sync.yml`](.github/workflows/panopto-sync.yml).
 Since there's no logged-in user for a scheduled job to authenticate as,
 `/panopto/sync` accepts an `X-Sync-Secret` header as an alternative to the
 normal session cookie — see `PANOPTO_SYNC_SECRET` / `PANOPTO_SYNC_OWNER_USER_ID`
 in `.env.example`.
+
+**The workflow polls from inside the job rather than relying on the cron
+tick, and that distinction is the difference between this feeling broken and
+feeling instant.** GitHub delivers scheduled triggers on a best-effort basis
+and drops most of them under load. Measured here over 7 days: 285 runs
+against an intended every-5-minutes, with a median gap of 26 minutes and a
+worst gap of 111. So each run now polls every 2 minutes for 2 hours on its
+own, and a newly delivered tick cancels the previous poller rather than
+stacking beside it (`concurrency.cancel-in-progress`). One delivered tick per
+two hours is enough to keep detection at ~2 minutes.
 
 Setup, once you've deployed:
 1. Generate a secret: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`
@@ -148,14 +158,26 @@ Setup, once you've deployed:
 3. In the same GitHub settings page, add a repository **variable** (not
    secret) `APP_BASE_URL` set to the deployed app's origin, e.g.
    `https://accessible-academic-backend.vercel.app` (no trailing slash).
-4. That's it — the workflow runs every 5 minutes automatically. You can also
-   trigger it by hand from the repo's **Actions** tab (`Panopto pilot sync` →
-   **Run workflow**) without waiting for the schedule.
+4. That's it. You can also start a poller immediately from the repo's
+   **Actions** tab (`Panopto pilot sync` → **Run workflow**) instead of
+   waiting for the next tick.
 
 Even with instant detection, "immediate" captions aren't achievable — the
 pipeline itself (transcription + GPT generation) takes several minutes
 regardless of how fast the upload is noticed. Polling gets uploads *noticed*
-quickly; it doesn't skip the processing time.
+quickly; it doesn't skip the processing time. Budget roughly **2 minutes to
+notice + 5–10 minutes to process** for a ~45-minute lecture.
+
+### Checking on it
+
+`GET /panopto/diagnostics` (same `X-Sync-Secret` header as `/panopto/sync`)
+returns one read-only snapshot of everything that has to be true for the
+automation to work: config presence, OAuth state and how long the cached
+access token is still good for, what Panopto currently lists in the folder
+and whether each session has been ingested, and every Panopto-linked lecture
+with its status and caption-sync result. It spends no tokens and ingests
+nothing, so it's safe to call at any time, including while a poller is
+mid-run.
 
 ### Things worth knowing going in
 
@@ -178,13 +200,37 @@ quickly; it doesn't skip the processing time.
   roughly half the time in testing, succeeded on retry with no pattern.
   `list_recent_sessions()` retries 3× before giving up.
 - **Panopto rotates the refresh token on every single use, not just
-  periodically.** `get_access_token()` keeps using the new one in memory for
-  the rest of that process, and prints it so you can update `.env` — but if
-  the app restarts before you do, you're back on a stale token and need to
-  redo `/panopto/oauth/login`. Confirmed end-to-end (2026-08-17): caption
-  push verified not just via our own DB but independently, by re-fetching
-  the session from Panopto's API and seeing a populated `CaptionDownloadUrl`
-  for Hebrew that wasn't there before.
+  periodically.** This is the single most fragile thing about the
+  integration, because every serverless invocation is a cold process: spend
+  the refresh token on each poll and you rotate dozens of times an hour,
+  and any two polls that overlap race to spend the same one. The loser is
+  left holding a dead token, and the only way back is a human doing an
+  interactive re-consent at `/panopto/oauth/login`. That happened once, on
+  2026-08-17. The fix is in `get_access_token()`: the *access* token is
+  cached in the database (`PanoptoToken`) and reused until it actually
+  expires, so a rotation happens roughly once an hour instead of every
+  poll, and `_recover_from_lost_race()` picks up the winner's token on the
+  rare overlap that remains.
+- **`GET /panopto/status` deliberately does not force a token refresh.** A
+  health check that rotated the refresh token every time it was called
+  would be a liability rather than a diagnostic. Prefer
+  `GET /panopto/diagnostics` for a fuller picture.
+- **Two pollers can be in flight at once** (a new tick cancels the old one,
+  but not instantly), so `lecture.panopto_session_id` carries a unique index
+  and `discover_and_ingest()` treats the resulting `IntegrityError` as
+  "someone else got there first". Without it, one recording could be
+  downloaded and transcribed twice — billed twice — and the second caption
+  push would then fail as a duplicate.
+- **A session that fails *after* its lecture row exists is not retried
+  automatically**, because the row makes it look already-ingested. A session
+  that fails *before* that (e.g. Panopto hasn't finished encoding, so there's
+  no download URL yet) is retried on the next poll, which is the common case.
+  `GET /panopto/diagnostics` surfaces the former as a lecture with an error
+  status.
+- Confirmed end-to-end (2026-08-17): caption push verified not just via our
+  own DB but independently, by re-fetching the session from Panopto's API
+  and seeing a populated `CaptionDownloadUrl` for Hebrew that wasn't there
+  before.
 
 ## 👥 The Team
 

@@ -21,6 +21,12 @@ class Lecture(SQLModel, table=True):
     # Panopto pilot integration (see app/services/panopto_service.py). Set when this
     # lecture was created from a Panopto recording, so the finished captions can be
     # pushed back onto that same session.
-    panopto_session_id: Optional[str] = None
+    # Unique: it's what "have we already ingested this recording?" is decided on, and
+    # the poller can have two runs in flight at once (see the sync workflow), which
+    # without this could each pass that check for the same session and ingest it
+    # twice — two downloads, two transcriptions billed, and a duplicate caption push
+    # that Panopto then rejects. NULLs aren't constrained, so non-Panopto lectures
+    # are unaffected.
+    panopto_session_id: Optional[str] = Field(default=None, unique=True, index=True)
     panopto_captions_synced_at: Optional[str] = None
     panopto_sync_error: Optional[str] = None

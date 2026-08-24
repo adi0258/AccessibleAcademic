@@ -1,48 +1,87 @@
 name: Panopto pilot sync
 
-# Vercel's Hobby plan caps native Cron Jobs at once/day, which is too slow for
-# "notice a new lecture quickly" — this workflow is the substitute, since
-# GitHub Actions' free tier allows finer-grained schedules. Panopto itself has
-# no outbound webhook for "new session uploaded" (confirmed, not an oversight
-# on our end — see README), so polling is the only option either way.
+# Polls the app's /panopto/sync so a lecture uploaded to Panopto gets picked
+# up, transcribed, and captioned automatically. Polling (rather than a push)
+# because Panopto has no outbound webhook for "new session uploaded" — a
+# long-standing, still-unshipped feature request on their side, not an
+# oversight in our setup.
+#
+# WHY THE JOB LOOPS INSTEAD OF JUST USING A SHORT cron:
+# the schedule below asks for every 5 minutes, but GitHub only delivers
+# scheduled ticks on a best-effort basis and drops most of them under load.
+# Measured over 7 days on this repo: 285 runs, median gap 26 minutes, worst
+# gap 111 minutes — against an intended 5. That is the difference between
+# "my upload got captioned a few minutes later" and "nothing happened for
+# two hours", which is exactly how this first read as broken.
+#
+# So each run does its own polling for two hours rather than trusting the
+# next tick to arrive on time. One delivered tick is then enough to keep
+# detection at ~2 minutes across the worst gap we've actually observed, and
+# concurrency below means a newly delivered tick replaces the running poller
+# instead of stacking up beside it.
+#
+# Deliberately NOT tightening the cron expression: editing it makes GitHub
+# re-register the schedule, which took ~50 minutes to start firing last time
+# and would leave a dead window right when the pilot is being watched. The
+# fix belongs in the job body, where it takes effect on the next run.
 #
 # One-time setup, in this repo's Settings → Secrets and variables → Actions:
 #   - Secret   PANOPTO_SYNC_SECRET  — same value as PANOPTO_SYNC_SECRET in the
 #              deployed app's environment variables (Vercel project settings).
 #   - Variable APP_BASE_URL         — the deployed app's origin, e.g.
 #              https://accessible-academic-backend.vercel.app (no trailing slash).
-#
-# GitHub does not guarantee schedule triggers fire exactly on time — expect
-# some jitter, especially during periods of high platform load.
-#
-# Known GitHub platform quirk, hit for real on 2026-08-17: a scheduled
-# workflow can fire once and then go silent for an extended stretch with no
-# error anywhere — not a config problem, a stuck internal registration.
-# GitHub's own fix is "push any commit to the default branch to resync it."
-# Also offset off :00/:05/:10 (the marks every other repo's cron also
-# targets) rather than exactly on them — GitHub's docs flag round-number
-# marks, especially the top of the hour, as the most congested and most
-# likely to get a schedule tick delayed or dropped.
 on:
   schedule:
     - cron: "2-59/5 * * * *"
   workflow_dispatch: {} # lets you trigger a run by hand from the Actions tab
 
+# Exactly one poller alive at a time: a freshly delivered tick cancels the
+# older loop and starts a new two-hour window. Without this, overlapping
+# two-hour runs would pile up several deep at the observed tick rate.
+concurrency:
+  group: panopto-sync
+  cancel-in-progress: true
+
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 130
     steps:
-      - name: Call /panopto/sync
+      - name: Poll /panopto/sync every 2 minutes for ~2 hours
+        env:
+          APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+          SYNC_SECRET: ${{ secrets.PANOPTO_SYNC_SECRET }}
         run: |
-          if [ -z "${{ vars.APP_BASE_URL }}" ] || [ -z "${{ secrets.PANOPTO_SYNC_SECRET }}" ]; then
+          if [ -z "$APP_BASE_URL" ] || [ -z "$SYNC_SECRET" ]; then
             echo "APP_BASE_URL variable or PANOPTO_SYNC_SECRET secret not set — see this file's header comment." >&2
             exit 1
           fi
-          http_status=$(curl -sS -o response.json -w "%{http_code}" -X POST \
-            "${{ vars.APP_BASE_URL }}/panopto/sync" \
-            -H "X-Sync-Secret: ${{ secrets.PANOPTO_SYNC_SECRET }}")
-          echo "HTTP $http_status"
-          cat response.json
-          if [ "$http_status" -ge 400 ]; then
-            exit 1
-          fi
+
+          fail_streak=0
+          for i in $(seq 1 60); do
+            http_status=$(curl -sS -m 300 -o response.json -w "%{http_code}" -X POST \
+              "$APP_BASE_URL/panopto/sync" \
+              -H "X-Sync-Secret: $SYNC_SECRET" || echo "000")
+
+            echo "--- poll $i/60 at $(date -u +%H:%M:%SZ) — HTTP $http_status"
+            cat response.json 2>/dev/null || true
+            echo
+
+            # A single failure is usually a cold start or Panopto's own flaky
+            # listing endpoint, and the next poll picks the work up anyway —
+            # so don't fail the run (and lose the poller) over one. Persistent
+            # failure is real, and worth going red for.
+            if [ "$http_status" -ge 400 ] || [ "$http_status" = "000" ]; then
+              fail_streak=$((fail_streak + 1))
+              echo "consecutive failures: $fail_streak"
+              if [ "$fail_streak" -ge 5 ]; then
+                echo "5 consecutive failures — see the responses above." >&2
+                exit 1
+              fi
+            else
+              fail_streak=0
+            fi
+
+            # No sleep after the final poll — the run should end, not idle.
+            if [ "$i" -lt 60 ]; then sleep 120; fi
+          done

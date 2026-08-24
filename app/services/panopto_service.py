@@ -9,13 +9,18 @@ Two directions:
            as a caption track back onto that same Panopto session
            (see upload_captions, called from pipeline_service).
 
-Verified live against the sandbox (2026-08-17): OAuth2 token exchange, folder
-listing, session search, single-session lookup, and the fact that
-Urls.DownloadUrl is only reliably populated by the single-session GET, not by
-either listing endpoint (get_session_details / download_session_video handle
-this). Caption upload is built and shape-tested but not yet fired for real —
-see /panopto/sync and the README before running it against a live session,
-since Panopto can't replace an existing caption track via this API.
+Verified live against the sandbox (2026-08-17), including a full unattended
+round trip: a recording uploaded in Panopto was detected, downloaded,
+transcribed, and had our captions pushed back onto it — confirmed from
+Panopto's own API rather than only from our database.
+
+Sandbox quirks worth keeping in mind, all found the hard way:
+  - Urls.DownloadUrl is only reliably populated by the single-session GET,
+    never by either listing endpoint (get_session_details handles this).
+  - The folder-listing endpoint intermittently 500s and succeeds on retry.
+  - Captions can't be replaced, only added: pushing a second track for a
+    language a session already has is a 400.
+  - The refresh token rotates on every single use — see get_access_token().
 """
 
 import os
@@ -25,6 +30,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import requests
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.core.config import (
@@ -59,54 +65,56 @@ def _require_config() -> None:
         )
 
 
-def _load_stored_refresh_token() -> Optional[str]:
+def _load_token_row() -> Optional[dict]:
+    """Snapshot of the stored OAuth state, as a plain dict so it stays usable
+    after the session closes."""
     with Session(engine) as db:
-        row = db.exec(select(PanoptoToken).order_by(PanoptoToken.id.desc())).first()
-        return row.refresh_token if row else None
+        row = db.exec(select(PanoptoToken).order_by(PanoptoToken.id)).first()
+        if not row:
+            return None
+        return {
+            "refresh_token": row.refresh_token,
+            "access_token": row.access_token,
+            "access_token_expires_at": row.access_token_expires_at,
+        }
 
 
-def _save_refresh_token(token: str) -> None:
+def _save_token_state(
+    refresh_token: str,
+    access_token: Optional[str] = None,
+    access_token_expires_at: Optional[float] = None,
+) -> None:
     with Session(engine) as db:
-        row = db.exec(select(PanoptoToken)).first()
-        if row:
-            row.refresh_token = token
+        row = db.exec(select(PanoptoToken).order_by(PanoptoToken.id)).first()
+        if not row:
+            row = PanoptoToken(refresh_token=refresh_token, updated_at="")
         else:
-            row = PanoptoToken(refresh_token=token, updated_at="")
+            row.refresh_token = refresh_token
+        if access_token is not None:
+            row.access_token = access_token
+            row.access_token_expires_at = access_token_expires_at
         row.updated_at = datetime.now(timezone.utc).isoformat()
         db.add(row)
         db.commit()
 
 
-def get_access_token(force_refresh: bool = False) -> str:
-    """Access token, cached until ~60s before expiry.
+def _save_refresh_token(token: str) -> None:
+    """Bootstrap entry point for /panopto/oauth/callback: store a brand new
+    refresh token and drop any cached access token minted from the old one."""
+    _save_token_state(token, access_token="", access_token_expires_at=0.0)
+    _token_cache["value"] = None
+    _token_cache["expires_at"] = 0.0
 
-    Uses the refresh-token grant (acts as the admin who completed the
-    one-time browser consent — see get_authorize_url / exchange_code) when a
-    refresh token is available; falls back to plain Client Credentials (no
-    user identity — fine for reads, refused for editing captions) otherwise.
-    See config.py for why both grant types exist.
 
-    The refresh token itself comes from the database first (PanoptoToken,
-    single row), falling back to PANOPTO_REFRESH_TOKEN only if the database
-    has never seen one — that env var is a one-time seed, not the ongoing
-    source of truth. This matters because Panopto rotates the refresh token
-    on every use: two processes reading the same static env var (e.g. local
-    testing and the deployed app) will invalidate each other's copy the
-    moment either one calls this. Reading/writing through each environment's
-    own database — which local dev and production don't share — keeps each
-    one self-consistent regardless of what happens in the other.
-    """
-    _require_config()
-    now = time.time()
-    if not force_refresh and _token_cache["value"] and now < _token_cache["expires_at"]:
-        return _token_cache["value"]
-
-    refresh_token = _load_stored_refresh_token() or PANOPTO_REFRESH_TOKEN
-    if refresh_token:
-        data = {"grant_type": "refresh_token", "refresh_token": refresh_token}
-    else:
-        data = {"grant_type": "client_credentials", "scope": "api"}
-
+def _exchange_refresh_token(refresh_token: str) -> dict:
+    data = (
+        {"grant_type": "refresh_token", "refresh_token": refresh_token}
+        if refresh_token
+        # No refresh token anywhere: fall back to Client Credentials. That
+        # grant has no user identity, so reads work but caption writes get a
+        # 401 — see config.py.
+        else {"grant_type": "client_credentials", "scope": "api"}
+    )
     resp = requests.post(
         f"{PANOPTO_BASE_URL}/Panopto/oauth2/connect/token",
         data=data,
@@ -115,14 +123,81 @@ def get_access_token(force_refresh: bool = False) -> str:
     )
     if not resp.ok:
         raise PanoptoAPIError(f"Token request failed ({resp.status_code}): {resp.text}")
-    payload = resp.json()
-    _token_cache["value"] = payload["access_token"]
-    _token_cache["expires_at"] = now + payload.get("expires_in", 3600) - 60
+    return resp.json()
 
-    new_refresh = payload.get("refresh_token")
-    if new_refresh and new_refresh != refresh_token:
-        _save_refresh_token(new_refresh)
-    return _token_cache["value"]
+
+def get_access_token(force_refresh: bool = False) -> str:
+    """A valid Panopto access token, doing as little token spending as possible.
+
+    Order of preference: this process's memory, then the access token cached
+    in the database, and only if both are stale does it spend the refresh
+    token to mint a new one.
+
+    That ordering is the whole point. Panopto rotates the refresh token every
+    single time it's used, and every serverless invocation starts with an
+    empty in-memory cache — so a naive implementation rotates on every poll,
+    and any two polls that overlap race to spend the same token. The loser of
+    that race is left holding a dead one, and recovering means a human doing
+    an interactive re-consent. Reusing the cached access token until it
+    actually expires turns "rotate dozens of times an hour" into "rotate
+    about once an hour", and _recover_from_lost_race() handles the rare
+    overlap that's left.
+    """
+    _require_config()
+    now = time.time()
+    if not force_refresh and _token_cache["value"] and now < _token_cache["expires_at"]:
+        return _token_cache["value"]
+
+    stored = _load_token_row()
+    if not force_refresh and stored:
+        cached, expires_at = stored["access_token"], stored["access_token_expires_at"]
+        if cached and expires_at and now < expires_at:
+            _token_cache["value"] = cached
+            _token_cache["expires_at"] = expires_at
+            return cached
+
+    refresh_token = (stored["refresh_token"] if stored else "") or PANOPTO_REFRESH_TOKEN
+    try:
+        payload = _exchange_refresh_token(refresh_token)
+    except PanoptoAPIError:
+        recovered = _recover_from_lost_race(refresh_token)
+        if recovered:
+            return recovered
+        raise
+
+    access_token = payload["access_token"]
+    # 60s of headroom so a token can't expire in flight between this check and
+    # the API call that uses it.
+    expires_at = now + payload.get("expires_in", 3600) - 60
+    _token_cache["value"] = access_token
+    _token_cache["expires_at"] = expires_at
+    _save_token_state(
+        payload.get("refresh_token") or refresh_token,
+        access_token=access_token,
+        access_token_expires_at=expires_at,
+    )
+    return access_token
+
+
+def _recover_from_lost_race(attempted_refresh_token: str) -> Optional[str]:
+    """Salvage the case where a concurrent caller rotated the refresh token
+    out from under us between our read and our exchange.
+
+    The tell is that the stored refresh token has changed since we read it,
+    and there's now a fresh access token sitting next to it — meaning the
+    other caller succeeded and we can just use its result. Returns None when
+    the failure was anything else (bad credentials, Panopto down, a genuinely
+    expired consent), so the caller re-raises the real error.
+    """
+    current = _load_token_row()
+    if not current or current["refresh_token"] == attempted_refresh_token:
+        return None
+    access_token, expires_at = current["access_token"], current["access_token_expires_at"]
+    if not access_token or not expires_at or time.time() >= expires_at:
+        return None
+    _token_cache["value"] = access_token
+    _token_cache["expires_at"] = expires_at
+    return access_token
 
 
 def get_authorize_url(state: str) -> str:
@@ -165,9 +240,14 @@ def _auth_headers() -> dict:
 
 
 def test_connection() -> dict:
-    """Cheapest possible round-trip: just fetch a token. Used by /panopto/status
-    so the OAuth client setup can be verified before wiring up anything else."""
-    get_access_token(force_refresh=True)
+    """Cheapest possible round-trip: just get a token. Used by /panopto/status
+    so the OAuth client setup can be verified before wiring up anything else.
+
+    Deliberately does NOT force a refresh — a health check that spent (and so
+    rotated) the refresh token on every call would be a liability rather than
+    a diagnostic. A cached-but-valid token proves the same thing this needs to.
+    """
+    get_access_token()
     return {"ok": True, "base_url": PANOPTO_BASE_URL}
 
 
@@ -275,6 +355,73 @@ def upload_captions(session_id: str, caption_path: str, language: str = PANOPTO_
     return resp.json() if resp.content else {"status": "ok"}
 
 
+def diagnostics(db: Session, folder_id: str = "") -> dict:
+    """One read-only snapshot of everything that has to be true for the
+    automatic pipeline to work: config, OAuth state, what Panopto currently
+    shows in the folder, and what we've done with each of those sessions.
+
+    Read-only on purpose — it can be called freely while the poller is
+    running without ingesting anything or spending the refresh token.
+    """
+    folder_id = folder_id or PANOPTO_FOLDER_ID
+    now = time.time()
+    stored = _load_token_row()
+
+    report = {
+        "config": {
+            "base_url": PANOPTO_BASE_URL or None,
+            "folder_id": folder_id or None,
+            "client_id_set": bool(PANOPTO_CLIENT_ID),
+            "client_secret_set": bool(PANOPTO_CLIENT_SECRET),
+            "caption_language": PANOPTO_CAPTION_LANGUAGE,
+        },
+        "oauth": {
+            "refresh_token_stored": bool(stored and stored["refresh_token"]),
+            "access_token_cached": bool(stored and stored["access_token"]),
+            "access_token_valid_for_seconds": (
+                int(stored["access_token_expires_at"] - now)
+                if stored and stored.get("access_token_expires_at")
+                else None
+            ),
+        },
+    }
+
+    lectures = db.exec(
+        select(Lecture).where(Lecture.panopto_session_id.is_not(None)).order_by(Lecture.id)
+    ).all()
+    by_session = {lecture.panopto_session_id: lecture for lecture in lectures}
+
+    try:
+        sessions = list_recent_sessions(folder_id, limit=25) if folder_id else []
+        report["panopto_folder"] = {"reachable": True, "session_count": len(sessions)}
+        report["sessions"] = [
+            {
+                "session_id": _session_id_of(raw),
+                "name": _session_name_of(raw),
+                "ingested": _session_id_of(raw) in by_session,
+            }
+            for raw in sessions
+        ]
+    except Exception as e:
+        report["panopto_folder"] = {"reachable": False, "error": str(e)}
+        report["sessions"] = []
+
+    report["lectures"] = [
+        {
+            "lecture_id": lecture.id,
+            "title": lecture.title,
+            "session_id": lecture.panopto_session_id,
+            "status": lecture.status,
+            "stage": lecture.processing_stage,
+            "progress": lecture.progress_percent,
+            "captions_synced_at": lecture.panopto_captions_synced_at,
+            "sync_error": lecture.panopto_sync_error,
+        }
+        for lecture in lectures
+    ]
+    return report
+
+
 def _session_id_of(raw: dict) -> Optional[str]:
     return raw.get("Id") or raw.get("id") or raw.get("SessionId") or raw.get("sessionId")
 
@@ -331,7 +478,20 @@ def discover_and_ingest(db: Session, user_id: int, folder_id: str = "", limit: i
             panopto_session_id=session_id,
         )
         db.add(lecture)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # Another poller run ingested this session while we were
+            # downloading it — the unique index on panopto_session_id is what
+            # stops us billing a second transcription for the same recording.
+            # Its download is the one that counts; drop ours.
+            db.rollback()
+            try:
+                os.remove(dest)
+            except OSError:
+                pass
+            skipped.append(session_id)
+            continue
         db.refresh(lecture)
         # filename (basename) matches the Lecture.filename DB convention; audio_source
         # is the full path run_full_pipeline actually needs (bare filenames resolve

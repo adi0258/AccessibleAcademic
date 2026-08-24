@@ -13,6 +13,7 @@ from app.services.panopto_service import (
     PanoptoAPIError,
     PanoptoNotConfigured,
     _save_refresh_token,
+    diagnostics,
     discover_and_ingest,
     exchange_code_for_tokens,
     get_authorize_url,
@@ -57,6 +58,22 @@ def panopto_status(user: User = Depends(get_current_user)):
     except PanoptoAPIError as e:
         return {"configured": True, "token_ok": False, "detail": str(e)}
     return {"configured": True, "token_ok": True, "base_url": result["base_url"], "default_folder_id": PANOPTO_FOLDER_ID or None}
+
+
+@router.get("/diagnostics")
+def panopto_diagnostics(
+    folder_id: str = "",
+    x_sync_secret: str = Header(default="", alias="X-Sync-Secret"),
+    session: Session = Depends(get_session),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Read-only snapshot of the whole automatic pipeline: config, OAuth
+    state, what Panopto shows in the folder, and what we've done with each
+    session. Same two ways in as /panopto/sync (logged-in human, or the
+    shared secret), so it can be checked from outside the browser without
+    ingesting anything or spending the refresh token."""
+    _resolve_sync_owner(session, user, x_sync_secret)
+    return diagnostics(session, folder_id=folder_id)
 
 
 @router.get("/oauth/login")
