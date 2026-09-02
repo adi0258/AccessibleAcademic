@@ -47,3 +47,17 @@ Thumbs.db
 *.mov
 *.mkv
 .env*
+
+# Presentation submission: track only the two deliverables themselves.
+# Everything else in here is working material — poster drafts and build
+# scripts, the transcription-comparison workspace, exports. It stays on disk,
+# it just isn't part of the repository.
+# Each level needs its own ignore + re-include: git won't look inside a
+# directory it has already excluded, so the parent has to be un-ignored first.
+documentation/submissions/presentation/*
+!documentation/submissions/presentation/מצגת/
+documentation/submissions/presentation/מצגת/*
+!documentation/submissions/presentation/מצגת/Accessible Academic Presentation.pptx
+!documentation/submissions/presentation/poster/
+documentation/submissions/presentation/poster/*
+!documentation/submissions/presentation/poster/Accessible Academic - poster v6.jpg
