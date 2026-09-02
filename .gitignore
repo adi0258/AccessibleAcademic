@@ -55,3 +55,6 @@ Thumbs.db
 documentation/submissions/presentation/*
 !documentation/submissions/presentation/Accessible Academic Presentation.pptx
 !documentation/submissions/presentation/Accessible Academic - poster v6.jpg
+
+# Internal exhibition prep — not part of the submitted repository
+documentation/prep/
