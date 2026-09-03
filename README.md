@@ -31,7 +31,7 @@ This project was inspired by the personal journey of **Adi Tapiro**, a hearing-i
 
 Our project documentation is organized into specialized modules to support the external evaluation process:
 
-* **[Business Strategy & Executive Summary](./documentation/submissions/business/):** The social mission, market research, and core business model (6-page depth).
+* **[Business Strategy & Executive Summary](./documentation/submissions/business/):** The social mission, market research, and go-to-market strategy.
 * **[Ideation & Concept](./documentation/submissions/ideation/):** The initial research and selection process of our core ideas.
 * **[MVP Scope & Roadmap](./documentation/submissions/technical/mvp/):** Strategic development plan and milestone tracking.
 * **[Technical HLD](./documentation/submissions/technical/hld/):** Deep dive into the system architecture, data models, and AI pipeline.

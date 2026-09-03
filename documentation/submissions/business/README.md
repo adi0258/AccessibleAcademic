@@ -1,18 +1,20 @@
-# 📈 Executive Summary & Market Research
+# 📈 Executive Summary & Market Analysis
 
-This folder contains the core business narrative and market analysis for **Accessible Academic**.
+The business case for **Accessible Academic** — the problem, the users, the market, and how we intend to reach it.
 
-## 🌟 The Vision
-Our mission is to bridge the accessibility gap in higher education using cutting-edge AI. We believe that real impact starts where technology meets a fundamental human need.
+## 📄 The document
 
-## 💡 The "Why" - A Personal Mission
-The concept of Accessible Academic was born from the personal journey of **Adi Tapiro**. As a hearing-impaired Computer Science student, Adi experienced firsthand the exhausting struggle of following lectures without accurate captions. This project is our solution to ensure true academic inclusion.
+**[Executive Summary (5 pages)](./Executive%20Summary%20Accessible%20Academic.docx)**
 
-## 🚀 Unique Value Proposition
-While other tools provide generic transcription, we focus on:
-* **Academic Precision:** Specialized handling of Hebrew technical and academic terminology.
-* **Audio Rescue:** Our unique pre-processing step that boosts low-quality hall recordings.
-* **Smart Synthesis:** Transforming raw speech into actionable study materials like summaries and flashcards.
+Covers: overview · the problem, target users and how the need was validated · the product and its value · innovation and key advantages · competitors and alternatives · target market and potential · go-to-market strategy · team and responsibilities.
 
-## 📂 Documents
-* [Executive Summary (Full Version)](./Executive_Summary_Accessible_Academic.docx) - Detailed business plan and research (6 pages).
+## 💡 The "Why"
+
+The concept came from the personal experience of **Adi Tapiro**. As a hearing-impaired computer science student, Adi spent three years working from lecture recordings she could not follow — either uncaptioned, or captioned so poorly in Hebrew that the captions did not help.
+
+## 🎯 What makes the case
+
+* **Closing the loop.** Captions are delivered back into Panopto, the platform the college already runs — so adopting it requires no change to how lecturers work.
+* **Measured, not asserted.** We evaluated the incumbent head to head on a real 2h13m algorithms lecture, scored against an independent third-engine reference.
+* **AI that cannot invent.** A four-agent validation layer removes anything the lecture did not actually say.
+* **Already running.** The pilot operates unattended in the college Panopto environment, in partnership with **Bekol**.
