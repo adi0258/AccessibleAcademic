@@ -5,7 +5,7 @@ This folder documents the initial phase of our project within the **Software Ent
 ## 👥 The Team
 Our team consists of two Computer Science students from MTA, combining technical skills with a deep personal connection to the problem of accessibility.
 
-* **Adi Tapiro:** Technical lead with professional experience in robotics instruction and a unique perspective as a hearing-impaired student.
+* **Adi Tapiero:** Technical lead with professional experience in robotics instruction and a unique perspective as a hearing-impaired student.
 * **Matan Gurfinkel:** User-experience and logistics lead, focusing on the challenges of remote learning and time management.
 
 ## 🔍 Conceptual Exploration

@@ -10,7 +10,7 @@ Covers: overview · the problem, target users and how the need was validated · 
 
 ## 💡 The "Why"
 
-The concept came from the personal experience of **Adi Tapiro**. As a hearing-impaired computer science student, Adi spent three years working from lecture recordings she could not follow — either uncaptioned, or captioned so poorly in Hebrew that the captions did not help.
+The concept came from the personal experience of **Adi Tapiero**. As a hearing-impaired computer science student, Adi spent three years working from lecture recordings she could not follow — either uncaptioned, or captioned so poorly in Hebrew that the captions did not help.
 
 ## 🎯 What makes the case
 
